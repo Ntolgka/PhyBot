@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime data (database, caches, downloaded models and audio)
+data/
+logs/
+*.log
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Private development notes and agent instruction files
+Notes/
+GeneralRules.md
+
+# Test / tooling output
+coverage/
+.vitest/
+.vite/
+.cache/
+
+# Python virtual environments (optional local tooling)
+.venv/
+__pycache__/
+
+# Editor and OS files
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

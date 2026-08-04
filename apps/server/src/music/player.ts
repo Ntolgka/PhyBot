@@ -1,0 +1,610 @@
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
+import {
+  AudioPlayerStatus,
+  NoSubscriberBehavior,
+  StreamType,
+  VoiceConnectionStatus,
+  createAudioPlayer,
+  createAudioResource,
+  entersState,
+  joinVoiceChannel,
+  type AudioPlayer,
+  type AudioResource,
+  type VoiceConnection,
+} from '@discordjs/voice';
+import type { Guild, VoiceBasedChannel } from 'discord.js';
+import type { LoopMode, PlayerSnapshot, PlayerStatus, Track } from '@phybot/shared';
+import { MAX_VOLUME, MIN_VOLUME, clamp, totalDuration } from '@phybot/shared';
+import { createLogger } from '../core/logger.js';
+import { toErrorMessage } from '../core/errors.js';
+import { createPcmStream, type FfmpegStream } from './audioStream.js';
+import { TrackQueue } from './queue.js';
+import { findRelatedTrack, resolvePlayableUrl } from './resolver.js';
+import { fetchPlaybackInfo, invalidatePlayback } from './ytdlp.js';
+
+const log = createLogger('player');
+
+export interface GuildPlayerEvents {
+  trackStart: [Track];
+  trackEnd: [Track];
+  queueEnd: [];
+  error: [string];
+  update: [];
+  destroyed: [];
+}
+
+export interface GuildPlayerOptions {
+  guild: Guild;
+  voiceChannel: VoiceBasedChannel;
+  textChannelId: string | null;
+  volume: number;
+  idleTimeoutSeconds: number;
+}
+
+export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
+  readonly guild: Guild;
+  readonly queue = new TrackQueue();
+
+  private connection: VoiceConnection | null = null;
+  private readonly audioPlayer: AudioPlayer;
+  private resource: AudioResource | null = null;
+  private stream: FfmpegStream | null = null;
+
+  private voiceChannelId: string;
+  private voiceChannelName: string;
+  textChannelId: string | null;
+
+  private volumePercent: number;
+  private idleTimeoutSeconds: number;
+  private autoplayEnabled = false;
+
+  /** Offset applied after a seek, in seconds. */
+  private startOffset = 0;
+  private status: PlayerStatus = 'idle';
+  /** Set while stopping the audio player on purpose so idle is not treated as track end. */
+  private transitioning = false;
+  private destroyed = false;
+  private emptySince: number | null = null;
+  /** Last track autoplay used as a seed, kept when the history is trimmed. */
+  private lastSeed: Track | null = null;
+  /** Set while an assistant reply is being spoken, so it can be interrupted. */
+  private speechPlayer: AudioPlayer | null = null;
+  private readonly idleTimer: NodeJS.Timeout;
+  private tickTimer: NodeJS.Timeout | null = null;
+  private lastError: string | null = null;
+
+  constructor(options: GuildPlayerOptions) {
+    super();
+    this.guild = options.guild;
+    this.voiceChannelId = options.voiceChannel.id;
+    this.voiceChannelName = options.voiceChannel.name;
+    this.textChannelId = options.textChannelId;
+    this.volumePercent = clamp(options.volume, MIN_VOLUME, MAX_VOLUME);
+    this.idleTimeoutSeconds = options.idleTimeoutSeconds;
+
+    this.audioPlayer = createAudioPlayer({
+      behaviors: { maxMissedFrames: 50 },
+    });
+    this.registerPlayerEvents();
+    this.connect(options.voiceChannel);
+
+    this.idleTimer = setInterval(() => this.checkIdle(), 15_000);
+  }
+
+  // -- connection ----------------------------------------------------------
+
+  connect(channel: VoiceBasedChannel): void {
+    this.voiceChannelId = channel.id;
+    this.voiceChannelName = channel.name;
+
+    const connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: false,
+      selfMute: false,
+    });
+
+    connection.on(VoiceConnectionStatus.Disconnected, () => {
+      void this.handleDisconnect(connection);
+    });
+    connection.on('error', (error) => {
+      log.warn({ err: error, guildId: this.guild.id }, 'Voice connection error');
+    });
+
+    connection.subscribe(this.audioPlayer);
+    this.connection = connection;
+    this.emitUpdate();
+  }
+
+  private async handleDisconnect(connection: VoiceConnection): Promise<void> {
+    try {
+      // A move between channels looks like a disconnect; wait for a reconnect.
+      await Promise.race([
+        entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+        entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+      ]);
+    } catch {
+      log.info({ guildId: this.guild.id }, 'Voice connection lost, cleaning up');
+      this.destroy();
+    }
+  }
+
+  /** Waits until the voice connection is usable. */
+  async waitUntilReady(timeoutMs = 20_000): Promise<void> {
+    if (!this.connection) throw new Error('Not connected to a voice channel');
+    await entersState(this.connection, VoiceConnectionStatus.Ready, timeoutMs);
+  }
+
+  get voiceConnection(): VoiceConnection | null {
+    return this.connection;
+  }
+
+  get channelId(): string {
+    return this.voiceChannelId;
+  }
+
+  // -- playback ------------------------------------------------------------
+
+  private registerPlayerEvents(): void {
+    this.audioPlayer.on(AudioPlayerStatus.Playing, () => {
+      this.setStatus('playing');
+    });
+    this.audioPlayer.on(AudioPlayerStatus.Paused, () => this.setStatus('paused'));
+    this.audioPlayer.on(AudioPlayerStatus.AutoPaused, () => this.setStatus('paused'));
+    this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
+      if (this.transitioning || this.destroyed) return;
+      const finished = this.queue.current;
+      if (finished) this.emit('trackEnd', finished);
+      void this.advance();
+    });
+    this.audioPlayer.on('error', (error) => {
+      log.warn({ err: error, guildId: this.guild.id }, 'Audio player error');
+      this.lastError = toErrorMessage(error);
+      if (this.transitioning || this.destroyed) return;
+      void this.advance();
+    });
+  }
+
+  private setStatus(status: PlayerStatus): void {
+    if (this.status === status) return;
+    this.status = status;
+    if (status === 'playing') this.startTicking();
+    else this.stopTicking();
+    this.emitUpdate();
+  }
+
+  /** Pushes periodic snapshots so the dashboard progress bar stays in sync. */
+  private startTicking(): void {
+    if (this.tickTimer) return;
+    this.tickTimer = setInterval(() => this.emitUpdate(), 3000);
+  }
+
+  private stopTicking(): void {
+    if (!this.tickTimer) return;
+    clearInterval(this.tickTimer);
+    this.tickTimer = null;
+  }
+
+  /** Adds tracks and starts playback when nothing is playing yet. */
+  async enqueue(
+    tracks: Track[],
+    options: { next?: boolean } = {},
+  ): Promise<{ added: number; rejected: number }> {
+    const result = this.queue.add(tracks, options);
+    if (!this.queue.current && result.added > 0) {
+      await this.advance();
+    } else {
+      this.emitUpdate();
+    }
+    return result;
+  }
+
+  /** Moves to the next track, or ends the session when nothing is left. */
+  private async advance(options: { force?: boolean } = {}): Promise<void> {
+    if (this.destroyed) return;
+    const next = this.queue.next(options);
+
+    if (!next) {
+      if (this.autoplayEnabled) {
+        // Seed from the track that just finished so the radio keeps drifting
+        // with what was actually played rather than the original request.
+        const seed = this.queue.history[0] ?? this.lastSeed;
+        if (seed) {
+          this.lastSeed = seed;
+          const related = await findRelatedTrack(seed, this.queue.knownUrls(), {
+            requestedBy: seed.requestedBy,
+            requestedByName: 'Autoplay',
+          });
+          if (related) {
+            this.queue.add([related]);
+            await this.advance();
+            return;
+          }
+          log.info(
+            { guildId: this.guild.id, seed: seed.title },
+            'Autoplay found no similar track, stopping',
+          );
+        }
+      }
+      this.setStatus('idle');
+      this.emit('queueEnd');
+      this.emitUpdate();
+      return;
+    }
+
+    await this.startTrack(next, 0);
+  }
+
+  private async startTrack(track: Track, seekSeconds: number, isRetry = false): Promise<void> {
+    this.stopStream();
+    this.setStatus('loading');
+    this.startOffset = seekSeconds;
+
+    // Spotify entries resolve to a different (YouTube) url, which is also the
+    // key used by the playback cache when a retry has to invalidate it.
+    let playableUrl = track.url;
+    try {
+      playableUrl = await resolvePlayableUrl(track);
+      const info = await fetchPlaybackInfo(playableUrl);
+      if (info.duration > 0 && track.duration === 0) track.duration = info.duration;
+      if (info.isLive) track.isLive = true;
+
+      const stream = createPcmStream({
+        url: info.streamUrl,
+        headers: info.headers,
+        seekSeconds,
+      });
+      this.stream = stream;
+
+      const resource = createAudioResource(stream.output, {
+        inputType: StreamType.Raw,
+        inlineVolume: true,
+      });
+      resource.volume?.setVolume(this.volumePercent / 100);
+      this.resource = resource;
+
+      this.transitioning = false;
+      this.audioPlayer.play(resource);
+      this.lastError = null;
+      this.emit('trackStart', track);
+      this.emitUpdate();
+    } catch (error) {
+      const message = toErrorMessage(error);
+      log.warn({ err: error, guildId: this.guild.id, track: track.title }, 'Failed to start track');
+
+      if (!isRetry) {
+        // Signed media URLs expire; drop the cache entry and try once more.
+        invalidatePlayback(playableUrl);
+        await this.startTrack(track, seekSeconds, true);
+        return;
+      }
+
+      this.lastError = message;
+      this.emit('error', `${track.title}: ${message}`);
+      await this.advance({ force: true });
+    }
+  }
+
+  private stopStream(): void {
+    this.transitioning = true;
+    try {
+      this.audioPlayer.stop(true);
+    } catch {
+      // The player may already be idle.
+    }
+    this.stream?.destroy();
+    this.stream = null;
+    this.resource = null;
+    this.transitioning = false;
+  }
+
+  // -- controls ------------------------------------------------------------
+
+  pause(): boolean {
+    if (this.status !== 'playing') return false;
+    const paused = this.audioPlayer.pause(true);
+    if (paused) this.setStatus('paused');
+    return paused;
+  }
+
+  resume(): boolean {
+    if (this.status !== 'paused') return false;
+    const resumed = this.audioPlayer.unpause();
+    if (resumed) this.setStatus('playing');
+    return resumed;
+  }
+
+  togglePause(): PlayerStatus {
+    if (this.status === 'playing') this.pause();
+    else if (this.status === 'paused') this.resume();
+    return this.status;
+  }
+
+  async skip(count = 1): Promise<Track | null> {
+    for (let i = 0; i < Math.max(1, count) - 1; i += 1) {
+      this.queue.next({ force: true });
+    }
+    await this.advance({ force: true });
+    return this.queue.current;
+  }
+
+  async previous(): Promise<Track | null> {
+    const previous = this.queue.previous();
+    if (!previous) return null;
+    await this.startTrack(previous, 0);
+    return previous;
+  }
+
+  /** Restarts the current track from the beginning. */
+  async restart(): Promise<Track | null> {
+    const current = this.queue.current;
+    if (!current) return null;
+    await this.startTrack(current, 0);
+    return current;
+  }
+
+  async jumpTo(index: number): Promise<Track | null> {
+    const target = this.queue.jumpTo(index);
+    if (!target) return null;
+    await this.startTrack(target, 0);
+    return target;
+  }
+
+  async playTrackNow(track: Track): Promise<void> {
+    this.queue.add([track], { next: true });
+    await this.advance({ force: true });
+  }
+
+  /** Absolute seek in seconds. Live streams cannot be seeked. */
+  async seek(seconds: number): Promise<number> {
+    const current = this.queue.current;
+    if (!current) throw new Error('Nothing is playing');
+    if (current.isLive) throw new Error('Live streams cannot be seeked');
+    const target = clamp(
+      seconds,
+      0,
+      current.duration > 0 ? Math.max(0, current.duration - 1) : seconds,
+    );
+    await this.startTrack(current, target);
+    return target;
+  }
+
+  async seekRelative(delta: number): Promise<number> {
+    return this.seek(this.position + delta);
+  }
+
+  stop(clearQueue = true): void {
+    if (clearQueue) this.queue.clear();
+    this.queue.current = null;
+    this.stopStream();
+    this.setStatus('stopped');
+    this.emitUpdate();
+  }
+
+  setVolume(percent: number): number {
+    this.volumePercent = clamp(Math.round(percent), MIN_VOLUME, MAX_VOLUME);
+    this.resource?.volume?.setVolume(this.volumePercent / 100);
+    this.emitUpdate();
+    return this.volumePercent;
+  }
+
+  setLoop(mode: LoopMode): LoopMode {
+    this.queue.loop = mode;
+    this.emitUpdate();
+    return mode;
+  }
+
+  setShuffle(enabled: boolean): boolean {
+    this.queue.shuffle = enabled;
+    this.emitUpdate();
+    return enabled;
+  }
+
+  shuffleQueue(): number {
+    const count = this.queue.shuffleAll();
+    this.emitUpdate();
+    return count;
+  }
+
+  // Queue mutations go through the player so every listener sees the change.
+
+  removeTrack(trackId: string): Track | null {
+    const removed = this.queue.remove(trackId);
+    if (removed) this.emitUpdate();
+    return removed;
+  }
+
+  removeTrackAt(index: number): Track | null {
+    const removed = this.queue.removeAt(index);
+    if (removed) this.emitUpdate();
+    return removed;
+  }
+
+  clearQueue(): number {
+    const removed = this.queue.clear();
+    this.emitUpdate();
+    return removed;
+  }
+
+  moveTrack(from: number, to: number): boolean {
+    const moved = this.queue.move(from, to);
+    if (moved) this.emitUpdate();
+    return moved;
+  }
+
+  dedupeQueue(): number {
+    const removed = this.queue.dedupe();
+    if (removed > 0) this.emitUpdate();
+    return removed;
+  }
+
+  setAutoplay(enabled: boolean): boolean {
+    this.autoplayEnabled = enabled;
+    this.emitUpdate();
+    // Switching it on with nothing playing starts the radio straight away.
+    if (enabled && !this.queue.current && this.status !== 'loading') {
+      void this.advance();
+    }
+    return enabled;
+  }
+
+  get autoplay(): boolean {
+    return this.autoplayEnabled;
+  }
+
+  get volume(): number {
+    return this.volumePercent;
+  }
+
+  get position(): number {
+    if (!this.resource) return this.startOffset;
+    return this.startOffset + this.resource.playbackDuration / 1000;
+  }
+
+  get playbackStatus(): PlayerStatus {
+    return this.status;
+  }
+
+  get error(): string | null {
+    return this.lastError;
+  }
+
+  setIdleTimeout(seconds: number): void {
+    this.idleTimeoutSeconds = seconds;
+  }
+
+  setTextChannel(channelId: string | null): void {
+    this.textChannelId = channelId;
+    this.emitUpdate();
+  }
+
+  /**
+   * Plays a short PCM clip (assistant speech) over the current connection.
+   * Music is paused for the duration and resumed afterwards.
+   */
+  async playAnnouncement(pcm: Buffer): Promise<void> {
+    if (this.destroyed || !this.connection) throw new Error('Not connected to a voice channel');
+    // A new reply always replaces one that is still being spoken.
+    this.interruptAnnouncement();
+
+    const wasPlaying = this.status === 'playing';
+    if (wasPlaying) this.audioPlayer.pause(true);
+
+    const speechPlayer = createAudioPlayer({
+      behaviors: { noSubscriber: NoSubscriberBehavior.Play },
+    });
+    this.speechPlayer = speechPlayer;
+    const resource = createAudioResource(Readable.from(pcm), { inputType: StreamType.Raw });
+    const subscription = this.connection.subscribe(speechPlayer);
+
+    try {
+      speechPlayer.play(resource);
+      await entersState(speechPlayer, AudioPlayerStatus.Playing, 5_000);
+      await entersState(speechPlayer, AudioPlayerStatus.Idle, 120_000);
+    } finally {
+      speechPlayer.stop(true);
+      subscription?.unsubscribe();
+      if (this.speechPlayer === speechPlayer) this.speechPlayer = null;
+      // Re-subscribing restores music playback on the same connection.
+      this.connection?.subscribe(this.audioPlayer);
+      if (wasPlaying) this.audioPlayer.unpause();
+    }
+  }
+
+  /** True while a spoken reply is being played. */
+  get isSpeaking(): boolean {
+    return this.speechPlayer !== null;
+  }
+
+  /**
+   * Cuts a spoken reply short, which is what lets the wake word interrupt the
+   * assistant mid-sentence. Returns false when nothing was being said.
+   */
+  interruptAnnouncement(): boolean {
+    const speech = this.speechPlayer;
+    if (!speech) return false;
+    this.speechPlayer = null;
+    // Stopping moves the player to Idle, so playAnnouncement's wait resolves
+    // and its cleanup restores the music subscription.
+    speech.stop(true);
+    return true;
+  }
+
+  // -- housekeeping --------------------------------------------------------
+
+  /** Leaves the voice channel after being alone for the configured time. */
+  private checkIdle(): void {
+    if (this.destroyed || this.idleTimeoutSeconds <= 0) return;
+    const channel = this.guild.channels.cache.get(this.voiceChannelId);
+    const listeners =
+      channel && channel.isVoiceBased()
+        ? channel.members.filter((member) => !member.user.bot).size
+        : 0;
+
+    const idle = listeners === 0 || this.status === 'idle' || this.status === 'stopped';
+    if (!idle) {
+      this.emptySince = null;
+      return;
+    }
+    this.emptySince ??= Date.now();
+    if (Date.now() - this.emptySince >= this.idleTimeoutSeconds * 1000) {
+      log.info({ guildId: this.guild.id }, 'Leaving voice channel after inactivity');
+      this.destroy();
+    }
+  }
+
+  snapshot(): PlayerSnapshot {
+    const upcoming = [...this.queue.tracks];
+    return {
+      guildId: this.guild.id,
+      guildName: this.guild.name,
+      status: this.status,
+      current: this.queue.current,
+      position: Math.max(0, Math.round(this.position * 10) / 10),
+      queue: upcoming,
+      history: [...this.queue.history].slice(0, 25),
+      volume: this.volumePercent,
+      loop: this.queue.loop,
+      shuffle: this.queue.shuffle,
+      autoplay: this.autoplayEnabled,
+      voiceChannelId: this.voiceChannelId,
+      voiceChannelName: this.voiceChannelName,
+      textChannelId: this.textChannelId,
+      queueDuration: totalDuration(upcoming),
+      updatedAt: Date.now(),
+    };
+  }
+
+  private emitUpdate(): void {
+    if (this.destroyed) return;
+    this.emit('update');
+  }
+
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    clearInterval(this.idleTimer);
+    this.stopTicking();
+    this.stopStream();
+    try {
+      this.audioPlayer.stop(true);
+    } catch {
+      // Already stopped.
+    }
+    try {
+      this.connection?.destroy();
+    } catch {
+      // The connection may already be gone.
+    }
+    this.connection = null;
+    this.status = 'idle';
+    this.emit('destroyed');
+    this.removeAllListeners();
+  }
+
+  get isDestroyed(): boolean {
+    return this.destroyed;
+  }
+}

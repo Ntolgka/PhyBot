@@ -1,0 +1,45 @@
+{
+  "name": "@phybot/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "deploy-commands": "tsx src/scripts/deploy-commands.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/static": "^10.1.2",
+    "@fastify/websocket": "^11.3.0",
+    "@noble/ciphers": "^2.2.0",
+    "@discordjs/voice": "^0.19.2",
+    "@phybot/shared": "*",
+    "croner": "^10.0.1",
+    "discord.js": "^14.27.0",
+    "ffmpeg-static": "^5.3.0",
+    "fastify": "^5.11.2",
+    "opusscript": "^0.0.8",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "prism-media": "^1.3.5",
+    "ws": "^8.21.2",
+    "youtube-dl-exec": "^3.1.10",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@discordjs/opus": "^0.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

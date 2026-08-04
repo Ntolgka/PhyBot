@@ -1,0 +1,36 @@
+{
+  "name": "phybot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-purpose Discord bot with live music streaming, community tools and a web control panel.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "workspaces": [
+    "packages/shared",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
+    "build": "npm run build --workspace @phybot/shared && npm run build --workspace @phybot/server && npm run build --workspace @phybot/web",
+    "start": "npm run start --workspace @phybot/server",
+    "dev": "npm run build --workspace @phybot/shared && concurrently -n shared,server,web -c cyan,green,magenta \"npm:dev:shared\" \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:shared": "npm run dev --workspace @phybot/shared",
+    "dev:server": "npm run dev --workspace @phybot/server",
+    "dev:web": "npm run dev --workspace @phybot/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "opusscript": "^0.0.8"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,306 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  type APIEmbedField,
+} from 'discord.js';
+import type { PlayerSnapshot, Track } from '@phybot/shared';
+import { SEEK_STEP_SECONDS, formatDuration, progressBar, truncate } from '@phybot/shared';
+
+export const COLORS = {
+  brand: 0x7c5cff,
+  success: 0x3ba55d,
+  warning: 0xfaa61a,
+  danger: 0xed4245,
+  muted: 0x2b2d31,
+} as const;
+
+const SOURCE_LABELS: Record<Track['source'], string> = {
+  youtube: 'YouTube',
+  soundcloud: 'SoundCloud',
+  spotify: 'Spotify',
+  radio: 'Stream',
+  file: 'File',
+};
+
+export function baseEmbed(): EmbedBuilder {
+  return new EmbedBuilder().setColor(COLORS.brand);
+}
+
+export function successEmbed(message: string, title?: string): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(COLORS.success).setDescription(message);
+  if (title) embed.setTitle(title);
+  return embed;
+}
+
+export function errorEmbed(message: string, title = 'Something went wrong'): EmbedBuilder {
+  return new EmbedBuilder().setColor(COLORS.danger).setTitle(title).setDescription(message);
+}
+
+export function infoEmbed(message: string, title?: string): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(COLORS.brand).setDescription(message);
+  if (title) embed.setTitle(title);
+  return embed;
+}
+
+export function trackLine(track: Track, index?: number): string {
+  const prefix = index === undefined ? '' : `\`${index + 1}.\` `;
+  return `${prefix}[${truncate(track.title, 60)}](${track.url}) \`${formatDuration(track.duration, track.isLive)}\``;
+}
+
+export function nowPlayingEmbed(snapshot: PlayerSnapshot): EmbedBuilder {
+  const track = snapshot.current;
+  if (!track) {
+    return infoEmbed('The queue is empty. Add something with `/play`.', 'Nothing is playing');
+  }
+
+  const bar = track.isLive
+    ? 'Live stream'
+    : `${formatDuration(snapshot.position)} ${progressBar(snapshot.position, track.duration)} ${formatDuration(track.duration)}`;
+
+  const fields: APIEmbedField[] = [
+    { name: 'Requested by', value: track.requestedByName || 'Unknown', inline: true },
+    { name: 'Source', value: SOURCE_LABELS[track.source], inline: true },
+    { name: 'Volume', value: `${snapshot.volume}%`, inline: true },
+  ];
+  if (snapshot.queue.length > 0) {
+    fields.push({
+      name: 'Up next',
+      value: snapshot.queue
+        .slice(0, 3)
+        .map((item, index) => trackLine(item, index))
+        .join('\n'),
+    });
+  }
+
+  const embed = baseEmbed()
+    .setAuthor({ name: snapshot.status === 'paused' ? 'Paused' : 'Now playing' })
+    .setTitle(truncate(track.title, 100))
+    .setURL(track.url)
+    .setDescription(`${track.author ? `${truncate(track.author, 60)}\n` : ''}\`${bar}\``)
+    .addFields(fields)
+    .setFooter({
+      text: [
+        `${snapshot.queue.length} in queue`,
+        snapshot.loop !== 'off' ? `Loop: ${snapshot.loop}` : null,
+        snapshot.shuffle ? 'Shuffle on' : null,
+        snapshot.autoplay ? 'Autoplay on' : null,
+      ]
+        .filter(Boolean)
+        .join(' • '),
+    });
+
+  if (track.thumbnail) embed.setThumbnail(track.thumbnail);
+  return embed;
+}
+
+export function queueEmbed(snapshot: PlayerSnapshot, page = 0, pageSize = 10): EmbedBuilder {
+  const pages = Math.max(1, Math.ceil(snapshot.queue.length / pageSize));
+  const current = Math.min(Math.max(page, 0), pages - 1);
+  const slice = snapshot.queue.slice(current * pageSize, current * pageSize + pageSize);
+
+  const embed = baseEmbed().setTitle(`Queue for ${snapshot.guildName}`);
+  const lines: string[] = [];
+  if (snapshot.current) {
+    lines.push(`**Now playing**\n${trackLine(snapshot.current)}\n`);
+  }
+  lines.push(
+    slice.length > 0
+      ? slice.map((track, index) => trackLine(track, current * pageSize + index)).join('\n')
+      : '_Nothing queued._',
+  );
+  embed.setDescription(lines.join('\n'));
+
+  const total = snapshot.queueDuration;
+  embed.setFooter({
+    text: `Page ${current + 1}/${pages} • ${snapshot.queue.length} tracks • ${
+      total < 0 ? 'includes a live stream' : formatDuration(total)
+    } total`,
+  });
+  return embed;
+}
+
+export function addedEmbed(
+  tracks: Track[],
+  playlistName: string | null,
+  startedNow: boolean,
+): EmbedBuilder {
+  const first = tracks[0];
+  if (playlistName || tracks.length > 1) {
+    const embed = baseEmbed()
+      .setAuthor({ name: startedNow ? 'Playing playlist' : 'Added to queue' })
+      .setTitle(truncate(playlistName ?? `${tracks.length} tracks`, 100))
+      .setDescription(
+        tracks
+          .slice(0, 5)
+          .map((track, index) => trackLine(track, index))
+          .join('\n') + (tracks.length > 5 ? `\n_and ${tracks.length - 5} more_` : ''),
+      );
+    if (first?.thumbnail) embed.setThumbnail(first.thumbnail);
+    return embed;
+  }
+
+  const embed = baseEmbed()
+    .setAuthor({ name: startedNow ? 'Playing now' : 'Added to queue' })
+    .setTitle(truncate(first?.title ?? 'Track', 100))
+    .setDescription(
+      first ? `${first.author}\n\`${formatDuration(first.duration, first.isLive)}\`` : '',
+    );
+  if (first?.url) embed.setURL(first.url);
+  if (first?.thumbnail) embed.setThumbnail(first.thumbnail);
+  return embed;
+}
+
+/**
+ * Live panel kept in the music channel: what is playing, the queue and the
+ * controls, all in one message that is edited in place.
+ */
+export function panelEmbed(snapshot: PlayerSnapshot): EmbedBuilder {
+  const track = snapshot.current;
+  if (!track) {
+    return baseEmbed()
+      .setAuthor({ name: 'Music' })
+      .setTitle('Nothing is playing')
+      .setDescription('Use `/play` or the dashboard to start the music.')
+      .setFooter({ text: snapshot.guildName });
+  }
+
+  const progress = track.isLive
+    ? '`LIVE`'
+    : `\`${formatDuration(snapshot.position)}\` ${progressBar(snapshot.position, track.duration, 22)} \`${formatDuration(track.duration)}\``;
+
+  const embed = baseEmbed()
+    .setAuthor({ name: snapshot.status === 'paused' ? 'Paused' : 'Now playing' })
+    .setTitle(truncate(track.title, 100))
+    .setURL(track.url)
+    .setDescription(
+      [track.author ? `**${truncate(track.author, 60)}**` : null, progress]
+        .filter(Boolean)
+        .join('\n'),
+    )
+    .addFields({
+      name: 'Requested by',
+      value: track.requestedByName || 'Unknown',
+      inline: true,
+    });
+
+  embed.addFields(
+    { name: 'Source', value: SOURCE_LABELS[track.source], inline: true },
+    { name: 'Volume', value: `${snapshot.volume}%`, inline: true },
+  );
+
+  const upcoming = snapshot.queue.slice(0, 10);
+  if (upcoming.length > 0) {
+    const remaining = snapshot.queue.length - upcoming.length;
+    const total =
+      snapshot.queueDuration < 0
+        ? 'includes a live stream'
+        : formatDuration(snapshot.queueDuration);
+    embed.addFields({
+      name: `Queue (${snapshot.queue.length} • ${total})`,
+      value: `${upcoming.map((item, index) => trackLine(item, index)).join('\n')}${
+        remaining > 0 ? `\n_and ${remaining} more_` : ''
+      }`,
+    });
+  } else {
+    embed.addFields({
+      name: 'Queue',
+      value: snapshot.autoplay
+        ? '_Empty. Autoplay will keep similar music going._'
+        : '_Empty. Add something with `/play`._',
+    });
+  }
+
+  if (track.thumbnail) embed.setThumbnail(track.thumbnail);
+  embed
+    .setFooter({
+      text: [
+        snapshot.voiceChannelName ? `In ${snapshot.voiceChannelName}` : null,
+        snapshot.loop !== 'off' ? `Loop: ${snapshot.loop}` : null,
+        snapshot.shuffle ? 'Random order' : null,
+        snapshot.autoplay ? 'Autoplay on' : null,
+      ]
+        .filter(Boolean)
+        .join(' • '),
+    })
+    .setTimestamp(snapshot.updatedAt);
+  return embed;
+}
+
+/** Button ids handled by discord/interactions.ts. */
+export const MUSIC_BUTTONS = {
+  previous: 'music:previous',
+  rewind: 'music:rewind',
+  toggle: 'music:toggle',
+  forward: 'music:forward',
+  skip: 'music:skip',
+  stop: 'music:stop',
+  loop: 'music:loop',
+  shuffle: 'music:shuffle',
+  replay: 'music:replay',
+  queue: 'music:queue',
+  autoplay: 'music:autoplay',
+} as const;
+
+export function musicControls(snapshot: PlayerSnapshot): ActionRowBuilder<ButtonBuilder>[] {
+  const disabled = snapshot.current === null;
+  const primary = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.previous)
+      .setEmoji('⏮')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.rewind)
+      .setLabel(`-${SEEK_STEP_SECONDS}s`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || snapshot.current?.isLive === true),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.toggle)
+      .setEmoji(snapshot.status === 'playing' ? '⏸' : '▶')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.forward)
+      .setLabel(`+${SEEK_STEP_SECONDS}s`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || snapshot.current?.isLive === true),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.skip)
+      .setEmoji('⏭')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled),
+  );
+
+  const secondary = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.replay)
+      .setEmoji('🔂')
+      .setLabel('Play again')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.loop)
+      .setLabel(`Loop: ${snapshot.loop}`)
+      .setStyle(snapshot.loop === 'off' ? ButtonStyle.Secondary : ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.shuffle)
+      .setEmoji('🔀')
+      .setLabel('Mix queue')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(snapshot.queue.length < 2),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.autoplay)
+      .setEmoji('📻')
+      .setLabel(snapshot.autoplay ? 'Autoplay on' : 'Autoplay off')
+      .setStyle(snapshot.autoplay ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.stop)
+      .setEmoji('⏹')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled),
+  );
+
+  return [primary, secondary];
+}
