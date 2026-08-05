@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiRuntimeStatus, AiSettings, AiSettingsPatch, AiVoiceEvent } from '@phybot/shared';
+import type {
+  AiRuntimeStatus,
+  AiSettings,
+  AiSettingsPatch,
+  AiVoiceEvent,
+  FluxImage,
+} from '@phybot/shared';
 import { api } from '../../lib/api';
 import { queryKeys } from '../../lib/queryKeys';
 
@@ -62,7 +68,8 @@ export function useAiVoicesQuery() {
 
 export function useAiChatMutation() {
   return useMutation({
-    mutationFn: (params: ChatParams) => api.post<{ reply: string }>('/ai/chat', params),
+    mutationFn: (params: ChatParams) =>
+      api.post<{ reply: string; images: FluxImage[] }>('/ai/chat', params),
   });
 }
 

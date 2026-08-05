@@ -30,6 +30,37 @@ function t(language: AiSettings['language'], tr: string, en: string): string {
   return language === 'tr' ? tr : en;
 }
 
+/** Renders images and hands the file paths to whoever asked, if anyone. */
+async function runImageTool(
+  args: { prompt: string; count?: number },
+  ctx: ToolContext,
+): Promise<string> {
+  const status = getFluxStatus();
+  if (!status.installed || !status.modelsReady) {
+    return t(
+      ctx.settings.language,
+      'Goruntu uretici henuz kurulu degil.',
+      'The image generator is not set up yet.',
+    );
+  }
+
+  const count = args.count ?? 1;
+  try {
+    const result = await generateImages({ prompt: args.prompt, count, requestedBy: ctx.userId });
+    ctx.onGeneratedImages?.(result.images.map((image) => imageFilePath(image)));
+    return t(
+      ctx.settings.language,
+      count > 1 ? `${count} gorsel hazir.` : 'Gorsel hazir.',
+      count > 1 ? `Here are ${count} images.` : 'Here is the image.',
+    );
+  } catch (error) {
+    log.warn({ err: error }, 'Image generation from the assistant failed');
+    return error instanceof Error && error.message
+      ? error.message
+      : t(ctx.settings.language, 'Gorsel olusturulamadi.', 'The image could not be generated.');
+  }
+}
+
 /** Validates and runs a resolved tool call, returning a user-facing reply. */
 export async function executeTool(
   name: ToolName,
@@ -48,6 +79,23 @@ export async function executeTool(
           ),
       action: null,
     };
+  }
+
+  // Drawing does not involve a server at all, so it works from the dashboard
+  // chat as well. Everything below this point acts on a guild's player.
+  if (name === 'generate_image') {
+    const parsed = toolSchemas.generate_image.safeParse(args ?? {});
+    if (!parsed.success) {
+      return {
+        reply: t(
+          ctx.settings.language,
+          'Ne cizecegimi anlayamadim.',
+          "I couldn't tell what to draw.",
+        ),
+        action: name,
+      };
+    }
+    return { reply: await runImageTool(parsed.data, ctx), action: name };
   }
 
   if (!ctx.guildId) {
@@ -94,7 +142,9 @@ export async function executeTool(
 }
 
 async function runTool(
-  name: Exclude<ToolName, 'answer'>,
+  // 'answer' and 'generate_image' are handled before this point because they
+  // do not act on a guild's player.
+  name: Exclude<ToolName, 'answer' | 'generate_image'>,
   args: Record<string, unknown>,
   guildId: string,
   ctx: ToolContext,
@@ -102,30 +152,6 @@ async function runTool(
   const lang = ctx.settings.language;
 
   switch (name) {
-    case 'generate_image': {
-      const status = getFluxStatus();
-      if (!status.installed || !status.modelsReady) {
-        return t(
-          ctx.settings.language,
-          'Goruntu uretici henuz kurulu degil.',
-          'The image generator is not set up yet.',
-        );
-      }
-
-      const count = typeof args.count === 'number' ? args.count : 1;
-      const result = await generateImages({
-        prompt: args.prompt as string,
-        count,
-        requestedBy: ctx.userId,
-      });
-      ctx.onGeneratedImages?.(result.images.map((image) => imageFilePath(image)));
-
-      return t(
-        ctx.settings.language,
-        count > 1 ? `${count} gorsel hazir.` : 'Gorsel hazir.',
-        count > 1 ? `Here are ${count} images.` : 'Here is the image.',
-      );
-    }
     case 'play_music': {
       const result = await play({
         guildId,

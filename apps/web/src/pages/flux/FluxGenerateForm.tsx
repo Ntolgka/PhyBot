@@ -105,12 +105,12 @@ export function FluxGenerateForm({
 
       <Textarea
         label="Negative prompt"
-        // FLUX.1-schnell is guidance distilled: below a guidance scale of 2
+        // The distilled FLUX models are guidance free: at a guidance scale of 1
         // the unconditional branch is never computed, so this text is ignored.
         hint={
           advanced.cfgScale > 1
             ? 'What should not appear in the image.'
-            : 'Ignored at guidance 1. FLUX.1-schnell is trained without guidance; raise it above 1 in the advanced options for this to have any effect.'
+            : 'Ignored at guidance 1. The distilled FLUX models are trained without guidance; raise it above 1 in the advanced options for this to have any effect.'
         }
         placeholder="blurry, extra fingers, watermark"
         value={negativePrompt}

@@ -9,6 +9,7 @@ import {
   speakInVoice,
   updateAiSettings,
 } from '../../ai/index.js';
+import { listImages } from '../../flux/index.js';
 import { parseBody } from '../validation.js';
 
 export async function aiRoutes(app: FastifyInstance): Promise<void> {
@@ -25,13 +26,19 @@ export async function aiRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/ai/chat', async (request) => {
     const body = parseBody(aiChatSchema, request.body);
+
+    // The assistant can draw; the ids let the dashboard show what it made.
+    const generated: string[] = [];
     const reply = await chat({
       message: body.message,
       userId: 'dashboard',
       userName: 'Dashboard',
       ...(body.guildId ? { guildId: body.guildId } : {}),
+      onGeneratedImages: (files) => generated.push(...files),
     });
-    return { reply };
+
+    const images = generated.length > 0 ? listImages({ limit: generated.length }) : [];
+    return { reply, images };
   });
 
   app.post('/ai/listen', async (request) => {

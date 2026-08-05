@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Send } from 'lucide-react';
+import type { FluxImage } from '@phybot/shared';
 import { useAiChatMutation } from '../../features/ai/api';
+import { fluxImageUrl } from '../../features/flux/api';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -12,6 +14,8 @@ interface ChatMessage {
   id: number;
   role: 'user' | 'assistant';
   text: string;
+  /** Images the assistant drew for this reply, if any. */
+  images?: FluxImage[];
 }
 
 let messageSeq = 0;
@@ -33,7 +37,12 @@ export function AiChatPanel({ guildId }: { guildId: string | null }): ReactNode 
         onSuccess: (data) => {
           setMessages((prev) => [
             ...prev,
-            { id: ++messageSeq, role: 'assistant', text: data.reply },
+            {
+              id: ++messageSeq,
+              role: 'assistant',
+              text: data.reply,
+              ...(data.images.length > 0 ? { images: data.images } : {}),
+            },
           ]);
         },
         onError: (error) => {
@@ -76,6 +85,27 @@ export function AiChatPanel({ guildId }: { guildId: string | null }): ReactNode 
                   )}
                 >
                   {message.text}
+
+                  {message.images && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {message.images.map((image) => (
+                        <a
+                          key={image.id}
+                          href={fluxImageUrl(image.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="focus-ring block overflow-hidden rounded-md border border-border"
+                        >
+                          <img
+                            src={fluxImageUrl(image.id)}
+                            alt={image.prompt}
+                            loading="lazy"
+                            className="aspect-square w-full object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
