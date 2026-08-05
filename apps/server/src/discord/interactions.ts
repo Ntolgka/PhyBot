@@ -1,5 +1,6 @@
 import {
   MessageFlags,
+  type AutocompleteInteraction,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Interaction,
@@ -10,7 +11,9 @@ import { createLogger } from '../core/logger.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { handleEventInteraction, handleRolePanelInteraction } from '../features/index.js';
 import { playerManager } from '../music/manager.js';
+import { suggestVoices } from './commands/assistant.js';
 import { commandRegistry } from './commands/index.js';
+import { handleFluxButton } from './commands/imagine.js';
 import { executeSoundCommand, findSoundCommand } from './commands/soundboard.js';
 import { hasPermission, permissionMessage } from './commands/helpers.js';
 import { errorEmbed, musicControls, nowPlayingEmbed, queueEmbed, MUSIC_BUTTONS } from './embeds.js';
@@ -27,10 +30,24 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     }
     if (interaction.isButton()) {
       await handleButton(interaction);
+      return;
+    }
+    if (interaction.isAutocomplete()) {
+      await handleAutocomplete(interaction);
     }
   } catch (error) {
     await reportError(interaction, error);
   }
+}
+
+/** Only the /say voice option offers suggestions today. */
+async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  if (interaction.commandName !== 'say') {
+    await interaction.respond([]);
+    return;
+  }
+  const focused = interaction.options.getFocused();
+  await interaction.respond(suggestVoices(focused));
 }
 
 async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -102,6 +119,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 
   if (customId.startsWith('event:')) {
     await handleEventInteraction(interaction);
+    return;
+  }
+  if (customId.startsWith('flux:')) {
+    await handleFluxButton(interaction);
     return;
   }
   if (customId.startsWith('rolepanel:')) {

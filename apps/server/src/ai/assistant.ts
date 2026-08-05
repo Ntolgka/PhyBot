@@ -18,11 +18,14 @@ export interface ChatParams {
   userName: string;
   guildId?: string;
   channelId?: string;
+  /** Receives the file paths of any images the assistant generated. */
+  onGeneratedImages?: (files: string[]) => void;
 }
 
 function buildSystemPrompt(settings: AiSettings): string {
   const lines = [
-    'You are the voice and text assistant for a Discord music bot. You can control music playback, report scheduled server events, or just chat.',
+    'You are the voice and text assistant for a Discord music bot. You can control music playback, generate pictures locally, report scheduled server events, or just chat.',
+    'You can create images: when the user asks for a picture, a drawing or a wallpaper, call generate_image. Never claim you are unable to make images.',
     'Always pick the single most appropriate tool for the request. Use the "answer" tool for plain conversation, small talk, or when no action is needed.',
     'Never invent information about the server; only rely on what the tools report back.',
     settings.language === 'tr'
@@ -96,6 +99,7 @@ export async function runChat(
     userName,
     voiceChannelId: params.guildId ? resolveVoiceChannelId(params.guildId, params.userId) : null,
     settings,
+    ...(params.onGeneratedImages ? { onGeneratedImages: params.onGeneratedImages } : {}),
   };
 
   const outcome = await executeTool(toolName, call.arguments, context);

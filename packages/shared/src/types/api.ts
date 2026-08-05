@@ -1,6 +1,7 @@
 import type { AiRuntimeStatus, AiSettings, AiVoiceEvent } from './ai.js';
 import type { BotProfile, BotStatus, LogEntry, PresenceSettings } from './bot.js';
 import type { GuildEvent } from './events.js';
+import type { FluxProgress, FluxStatus } from './flux.js';
 import type { FreeGamesStatus } from './freegames.js';
 import type { GuildSettings, GuildSummary } from './guild.js';
 import type { PlayerSnapshot } from './music.js';
@@ -45,6 +46,8 @@ export type ServerMessage =
   | { type: 'ai:status'; data: AiRuntimeStatus }
   | { type: 'ai:settings'; data: AiSettings }
   | { type: 'ai:voice'; data: AiVoiceEvent }
+  | { type: 'flux:progress'; data: FluxProgress }
+  | { type: 'flux:status'; data: FluxStatus }
   | { type: 'log'; data: LogEntry }
   | { type: 'notice'; data: { level: 'info' | 'warn' | 'error'; message: string } }
   | { type: 'pong'; data: { at: number } };

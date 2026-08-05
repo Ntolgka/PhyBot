@@ -28,6 +28,13 @@ logs/
 Notes/
 GeneralRules.md
 
+# Local image generator: multi-gigabyte weights, the runtime and the output
+Flux/bin/
+Flux/models/
+Flux/Images/
+Flux/.download/
+Flux/flux.config.json
+
 # Test / tooling output
 coverage/
 .vitest/

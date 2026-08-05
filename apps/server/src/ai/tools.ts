@@ -41,6 +41,15 @@ export const toolSchemas = {
   now_playing: z.object({}),
   leave_voice: z.object({}),
   list_events: z.object({}),
+  generate_image: z.object({
+    prompt: z
+      .string()
+      .trim()
+      .min(1)
+      .max(1000)
+      .describe('What the picture should show, in English for the best result'),
+    count: z.number().int().min(1).max(4).optional().describe('How many images, 1 to 4'),
+  }),
   answer: z.object({
     text: z.string().trim().min(1).max(1000).describe('The reply to speak or show to the user'),
   }),
@@ -69,6 +78,8 @@ const toolDescriptions: Record<ToolName, string> = {
   now_playing: 'Report the currently playing track and position.',
   leave_voice: 'Disconnect from the voice channel.',
   list_events: 'List upcoming scheduled server events.',
+  generate_image:
+    'Draw or generate a picture from a description, locally on this machine. Use it whenever the user asks for an image, a drawing, a picture or a wallpaper.',
   answer: 'Reply conversationally without taking any action on the music bot.',
 };
 

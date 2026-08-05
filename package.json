@@ -23,7 +23,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "flux:setup": "node Flux/setup.mjs"
   },
   "dependencies": {
     "opusscript": "^0.0.8"

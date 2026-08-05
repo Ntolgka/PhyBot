@@ -242,7 +242,10 @@ export function NowPlayingCard({
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Toggle shuffle"
+          // The mode keeps re-drawing the next track, which is not the same as
+          // mixing the queue once; the labels have to make that obvious.
+          title="Random order: pick the next track at random every time"
+          aria-label="Toggle random order"
           aria-pressed={player.shuffle}
           className={cn(player.shuffle && 'text-accent-3')}
           onClick={() => shuffleMutation.mutate({ enabled: !player.shuffle })}
@@ -252,6 +255,7 @@ export function NowPlayingCard({
         <Button
           variant="ghost"
           size="icon"
+          title="Mix the queue once and keep that order"
           aria-label="Mix queue now"
           disabled={player.queue.length < 2}
           onClick={() => shuffleQueueMutation.mutate()}

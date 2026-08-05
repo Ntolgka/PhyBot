@@ -1,6 +1,7 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { AttachmentBuilder, SlashCommandBuilder } from 'discord.js';
 import { truncate } from '@phybot/shared';
 import { chat, getAiSettings, isConfigured, setListening, speakInVoice } from '../../ai/index.js';
+import { voiceRegistry } from '../../ai/tts/index.js';
 import { AppError } from '../../core/errors.js';
 import { baseEmbed, successEmbed } from '../embeds.js';
 import { embedReply, respond } from '../reply.js';
@@ -33,15 +34,18 @@ const askCommand: BotCommand = {
   async execute({ interaction, guild, member }) {
     assertConfigured();
     await interaction.deferReply();
+    const generated: string[] = [];
     const reply = await chat({
       message: interaction.options.getString('message', true),
       userId: member.id,
       userName: member.displayName,
       guildId: guild.id,
       channelId: interaction.channelId,
+      onGeneratedImages: (paths) => generated.push(...paths),
     });
     await respond(interaction, {
       embeds: [baseEmbed().setDescription(truncate(reply, 4000))],
+      files: generated.map((file) => new AttachmentBuilder(file)),
     });
   },
 };
@@ -82,24 +86,63 @@ const listenCommand: BotCommand = {
 
 const sayCommand: BotCommand = {
   category: 'AI',
-  usage: '/say <text>',
+  usage: '/say <text> [voice]',
   permission: 'dj',
   data: new SlashCommandBuilder()
     .setName('say')
     .setDescription('Speak a sentence in the voice channel')
     .addStringOption((option) =>
-      option.setName('text').setDescription('What to say').setRequired(true).setMaxLength(500),
+      option.setName('text').setDescription('What to say').setRequired(true).setMaxLength(1000),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('voice')
+        .setDescription('Which voice reads it; the default voice is used when left empty')
+        .setAutocomplete(true),
     ),
   async execute({ interaction, guild, member }) {
     const channel = requireVoiceChannel(member);
+    const requested = interaction.options.getString('voice');
+    const voice = requested ? findVoiceByName(requested) : null;
+    if (requested && !voice) {
+      throw new AppError(
+        'unknown_voice',
+        `There is no voice called "${requested}". Add one on the dashboard Speak page.`,
+        404,
+      );
+    }
+
     await interaction.deferReply();
     await speakInVoice({
       guildId: guild.id,
       text: interaction.options.getString('text', true),
       voiceChannelId: channel.id,
+      ...(voice ? { voiceId: voice.id } : {}),
     });
-    await embedReply(interaction, successEmbed('Done.'));
+    await embedReply(interaction, successEmbed(voice ? `Spoken with **${voice.name}**.` : 'Done.'));
   },
 };
+
+/** Matches a typed or autocompleted voice name against the registry. */
+function findVoiceByName(name: string): { id: number; name: string } | null {
+  const wanted = name.trim().toLowerCase();
+  const match = voiceRegistry
+    .list({ enabledOnly: true })
+    .find((voice) => voice.name.toLowerCase() === wanted || voice.voiceId.toLowerCase() === wanted);
+  return match ? { id: match.id, name: match.name } : null;
+}
+
+/** Suggestions for the voice option of /say. */
+export function suggestVoices(query: string): { name: string; value: string }[] {
+  const wanted = query.trim().toLowerCase();
+  return voiceRegistry
+    .list({ enabledOnly: true })
+    .filter((voice) => !wanted || voice.name.toLowerCase().includes(wanted))
+    .slice(0, 25)
+    .map((voice) => ({
+      name: voice.language ? `${voice.name} (${voice.language})` : voice.name,
+      value: voice.name,
+    }));
+}
 
 export const assistantCommands: BotCommand[] = [askCommand, listenCommand, sayCommand];

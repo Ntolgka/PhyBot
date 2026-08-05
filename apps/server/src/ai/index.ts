@@ -58,6 +58,8 @@ export interface SpeakInVoiceParams {
   guildId: string;
   text: string;
   voiceChannelId?: string;
+  /** Registry id of the voice to speak with. */
+  voiceId?: number;
 }
 
 /** Synthesises `text` and plays it in the guild's voice channel. Throws on failure. */

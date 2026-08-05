@@ -130,7 +130,7 @@ const shuffleCommand: BotCommand = {
         interaction,
         successEmbed(
           randomMode
-            ? 'Random order is on: the next track is picked at random.'
+            ? 'Random order is on: every skip picks a random track. Use /shuffle without options to mix once instead.'
             : 'Random order is off: the queue plays in order.',
         ),
       );
@@ -138,7 +138,10 @@ const shuffleCommand: BotCommand = {
     }
 
     const count = player.shuffleQueue();
-    await embedReply(interaction, successEmbed(`Mixed ${count} tracks.`));
+    await embedReply(
+      interaction,
+      successEmbed(`Mixed ${count} tracks. The new order stays as it is.`),
+    );
   },
 };
 

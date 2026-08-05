@@ -91,6 +91,21 @@ describe('TrackQueue', () => {
     expect([...queue.tracks].map((item) => item.id).sort()).toEqual(['b', 'c']);
   });
 
+  it('keeps a mixed order stable afterwards', () => {
+    // Mixing once must not leave random picking switched on, otherwise every
+    // later skip reshuffles what plays next.
+    const queue = new TrackQueue(sequence([0.99]));
+    queue.shuffle = true;
+    queue.add([track('a'), track('b'), track('c')]);
+
+    queue.shuffleAll();
+    queue.shuffle = false;
+
+    const order = [...queue.tracks].map((item) => item.id);
+    expect(queue.next()?.id).toBe(order[0]);
+    expect(queue.next()?.id).toBe(order[1]);
+  });
+
   it('jumps forward and treats skipped tracks as played', () => {
     const queue = new TrackQueue();
     queue.add([track('a'), track('b'), track('c')]);

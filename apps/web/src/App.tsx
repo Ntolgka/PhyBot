@@ -6,10 +6,12 @@ import { LoginPage } from './pages/LoginPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { MusicPage } from './pages/MusicPage';
 import { SoundboardPage } from './pages/SoundboardPage';
+import { FluxPage } from './pages/FluxPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { EventsPage } from './pages/EventsPage';
 import { FreeGamesPage } from './pages/FreeGamesPage';
 import { AiPage } from './pages/AiPage';
+import { SpeakPage } from './pages/SpeakPage';
 import { CommandsPage } from './pages/CommandsPage';
 import { RolePanelsPage } from './pages/RolePanelsPage';
 import { BotProfilePage } from './pages/BotProfilePage';
@@ -24,10 +26,12 @@ export function App(): ReactNode {
           <Route path="/" element={<OverviewPage />} />
           <Route path="/music" element={<MusicPage />} />
           <Route path="/soundboard" element={<SoundboardPage />} />
+          <Route path="/images" element={<FluxPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/free-games" element={<FreeGamesPage />} />
           <Route path="/ai" element={<AiPage />} />
+          <Route path="/speak" element={<SpeakPage />} />
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/role-panels" element={<RolePanelsPage />} />
           <Route path="/profile" element={<BotProfilePage />} />

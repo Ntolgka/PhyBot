@@ -1,0 +1,19 @@
+{
+  "backend": "cuda",
+  "model": "flux-2-klein-4b-Q4_0.gguf",
+  "clipL": "",
+  "t5": "",
+  "llm": "Qwen3-4B-Q4_K_M.gguf",
+  "vae": "flux2-vae.safetensors",
+  "upscaleModel": "RealESRGAN_x4plus.pth",
+  "steps": 4,
+  "cfgScale": 1,
+  "width": 1024,
+  "height": 1024,
+  "sampler": "euler",
+  "threads": -1,
+  "diffusionFlashAttention": true,
+  "vaeTiling": true,
+  "offloadToCpu": false,
+  "keepUnsavedDays": 14
+}

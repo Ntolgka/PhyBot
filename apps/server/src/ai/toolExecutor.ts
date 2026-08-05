@@ -3,6 +3,7 @@ import { formatDuration, truncate } from '@phybot/shared';
 import { AppError } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
 import { eventsRepository } from '../db/repositories/events.js';
+import { generateImages, getFluxStatus, imageFilePath } from '../flux/index.js';
 import { leave, play, getPlayer } from '../music/service.js';
 import { toolSchemas, type ToolName } from './tools.js';
 
@@ -15,6 +16,8 @@ export interface ToolContext {
   /** Voice channel the caller is currently in, when known. */
   voiceChannelId: string | null;
   settings: AiSettings;
+  /** Called with the file paths of any images a tool produced. */
+  onGeneratedImages?: (files: string[]) => void;
 }
 
 export interface ToolOutcome {
@@ -99,6 +102,30 @@ async function runTool(
   const lang = ctx.settings.language;
 
   switch (name) {
+    case 'generate_image': {
+      const status = getFluxStatus();
+      if (!status.installed || !status.modelsReady) {
+        return t(
+          ctx.settings.language,
+          'Goruntu uretici henuz kurulu degil.',
+          'The image generator is not set up yet.',
+        );
+      }
+
+      const count = typeof args.count === 'number' ? args.count : 1;
+      const result = await generateImages({
+        prompt: args.prompt as string,
+        count,
+        requestedBy: ctx.userId,
+      });
+      ctx.onGeneratedImages?.(result.images.map((image) => imageFilePath(image)));
+
+      return t(
+        ctx.settings.language,
+        count > 1 ? `${count} gorsel hazir.` : 'Gorsel hazir.',
+        count > 1 ? `Here are ${count} images.` : 'Here is the image.',
+      );
+    }
     case 'play_music': {
       const result = await play({
         guildId,

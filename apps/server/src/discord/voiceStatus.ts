@@ -21,12 +21,19 @@ const MAX_STATUS_LENGTH = 100;
 
 /** Last value written per channel, so identical updates are skipped. */
 const written = new Map<string, string>();
-const unsupported = new Set<string>();
+/**
+ * Channels that refused the update, with the time to try again. Permission can
+ * be granted while the bot is running, so a refusal is temporary rather than
+ * final.
+ */
+const retryAfter = new Map<string, number>();
+const RETRY_DELAY_MS = 10 * 60 * 1000;
 
 async function setStatus(channelId: string, status: string | null): Promise<void> {
   const client = tryGetClient();
   if (!client?.isReady()) return;
-  if (unsupported.has(channelId)) return;
+  const blockedUntil = retryAfter.get(channelId) ?? 0;
+  if (blockedUntil > Date.now()) return;
 
   const value = status ?? '';
   if (written.get(channelId) === value) return;
@@ -35,17 +42,21 @@ async function setStatus(channelId: string, status: string | null): Promise<void
     await client.rest.put(`/channels/${channelId}/voice-status` as `/${string}`, {
       body: { status: status ?? null },
     });
+    retryAfter.delete(channelId);
     if (status === null) written.delete(channelId);
     else written.set(channelId, value);
   } catch (error) {
     const message = toErrorMessage(error);
     // Missing permission or an unsupported channel type: stop trying for it.
     if (message.includes('Missing Permissions') || message.includes('403')) {
-      unsupported.add(channelId);
-      log.info(
-        { channelId },
-        'Cannot set the voice channel status. Give the bot the Set Voice Channel Status permission to show the current track there.',
-      );
+      const firstRefusal = !retryAfter.has(channelId);
+      retryAfter.set(channelId, Date.now() + RETRY_DELAY_MS);
+      if (firstRefusal) {
+        log.info(
+          { channelId },
+          'Cannot set the voice channel status yet. Give the bot the Set Voice Channel Status permission; it is retried every 10 minutes.',
+        );
+      }
       return;
     }
     log.debug({ channelId }, `Voice channel status update failed: ${message}`);

@@ -22,8 +22,9 @@ changing the bot's own name, avatar, banner, description and presence.
   tracks when the queue runs out
 - Volume control, per-server default volume and idle disconnect timeout
 - A live music panel in the chosen music channel: the current track, a progress
-  bar, the whole queue and working control buttons in one message that updates
-  itself and moves back to the bottom when the channel gets busy
+  bar, the whole queue and working control buttons. Each new track posts a fresh
+  panel at the bottom and clears the previous one, so the queue is always in
+  view; playback changes update that message in place
 - The voice channel status shows the track that is playing, with a music note
 - Autoplay keeps similar music going when the queue runs out, seeded from the
   track that just finished
@@ -34,6 +35,25 @@ changing the bot's own name, avatar, banner, description and presence.
 - Play them with `/sound <name>`, with their own slash command such as
   `/airhorn`, or by clicking a card in the dashboard
 - Clips play over the music, which resumes by itself afterwards
+
+### Images
+
+- Generate images locally with FLUX.2-klein-4B, so nothing leaves the machine
+  and there is nothing to pay for
+- One to four images per prompt, from Discord with /imagine or from the
+  dashboard, with buttons to upscale or keep each one
+- Defaults to 512 by 512 at four steps; larger sizes are a setting away.
+  About 5 GB of weights, which fits an 8 GB card comfortably
+- Everything the generator needs lives in the Flux folder; run
+  `npm run flux:setup` once to download it
+
+### Speech
+
+- Type text in the dashboard and the bot reads it out loud in a voice channel
+- The voice list is a library, not a fixed set: install any of the 300 or more
+  Microsoft neural voices, or point a voice at a local speech program to use a
+  custom or cloned voice
+- Pick the voice per message, in the dashboard or with /say
 
 ### Community
 
@@ -237,9 +257,10 @@ them inside Discord.
 | `/join`, `/leave`                                                             | Move the bot in and out of voice                           |
 | `/event create\|list\|publish\|cancel`                                        | Events with RSVP buttons                                   |
 | `/sound <name>`, `/sounds`                                                    | Play a soundboard clip, or list them                       |
+| `/imagine <prompt> [count]`                                                   | Generate one to four images locally                        |
 | `/freegames [refresh]`                                                        | Show games that are free right now                         |
 | `/config view\|autorole\|welcome\|goodbye\|freegames\|music-channel\|dj-role` | Server configuration                                       |
-| `/ask <message>`, `/listen <on\|off>`, `/say <text>`                          | Assistant                                                  |
+| `/ask <message>`, `/listen <on\|off>`, `/say <text> [voice]`                  | Assistant                                                  |
 | `/help`, `/ping`, `/stats`, `/invite`                                         | Utility                                                    |
 | `/restart`                                                                    | Restart the bot after an update (owner only)               |
 

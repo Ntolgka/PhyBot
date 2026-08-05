@@ -4,8 +4,10 @@ import { ACTIVITY_TYPES, PRESENCE_STATUSES } from './types/bot.js';
 import { AI_PROVIDERS, STT_PROVIDERS } from './types/ai.js';
 import { CUSTOM_COMMAND_TYPES } from './types/commands.js';
 import { GAME_STORES } from './types/freegames.js';
+import { FLUX_BACKENDS, MAX_FLUX_BATCH, MIN_FLUX_BATCH } from './types/flux.js';
 import { LOOP_MODES } from './types/music.js';
 import { RSVP_STATUSES } from './types/events.js';
+import { TTS_PROVIDERS } from './types/tts.js';
 
 /** Discord snowflakes are 17-20 digit numeric strings. */
 export const snowflake = z.string().regex(/^\d{17,20}$/, 'Invalid Discord id');
@@ -185,6 +187,40 @@ export const soundPlaySchema = z.object({
   voiceChannelId: snowflake.optional(),
 });
 
+export const fluxGenerateSchema = z.object({
+  prompt: z.string().min(1, 'Describe the image you want').max(1500),
+  negativePrompt: z.string().max(1000).optional(),
+  count: z.number().int().min(MIN_FLUX_BATCH).max(MAX_FLUX_BATCH).optional(),
+  width: z.number().int().min(256).max(1536).optional(),
+  height: z.number().int().min(256).max(1536).optional(),
+  steps: z.number().int().min(1).max(50).optional(),
+  cfgScale: z.number().min(0).max(20).optional(),
+  /** -1 asks for a random seed. */
+  seed: z.number().int().min(-1).max(2_147_483_647).optional(),
+});
+
+export const fluxConfigSchema = z
+  .object({
+    backend: z.enum(FLUX_BACKENDS),
+    model: z.string().min(1).max(200),
+    clipL: z.string().max(200),
+    t5: z.string().max(200),
+    llm: z.string().max(200),
+    vae: z.string().min(1).max(200),
+    upscaleModel: z.string().max(200),
+    steps: z.number().int().min(1).max(50),
+    cfgScale: z.number().min(0).max(20),
+    width: z.number().int().min(256).max(1536),
+    height: z.number().int().min(256).max(1536),
+    sampler: z.string().min(1).max(40),
+    threads: z.number().int().min(-1).max(64),
+    diffusionFlashAttention: z.boolean(),
+    vaeTiling: z.boolean(),
+    offloadToCpu: z.boolean(),
+    keepUnsavedDays: z.number().int().min(0).max(365),
+  })
+  .partial();
+
 export const aiSettingsSchema = z
   .object({
     provider: z.enum(AI_PROVIDERS),
@@ -237,9 +273,26 @@ export const voiceListenSchema = z.object({
 
 export const ttsSpeakSchema = z.object({
   guildId: snowflake,
-  text: z.string().min(1).max(500),
+  text: z.string().min(1).max(1000),
   voiceChannelId: snowflake.optional(),
+  /** Registry id of the voice to use; the default voice is used when absent. */
+  voiceId: z.number().int().positive().optional(),
 });
+
+export const ttsVoiceInputSchema = z.object({
+  name: z.string().min(1).max(60),
+  provider: z.enum(TTS_PROVIDERS),
+  voiceId: z.string().min(1).max(120),
+  language: z.string().max(20).optional(),
+  gender: z.string().max(20).optional(),
+  description: z.string().max(200).optional(),
+  command: z.string().max(500).optional(),
+  commandArgs: z.string().max(1000).optional(),
+  enabled: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+export const ttsVoiceUpdateSchema = ttsVoiceInputSchema.partial();
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type PlayRequestInput = z.infer<typeof playRequestSchema>;

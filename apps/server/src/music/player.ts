@@ -402,8 +402,14 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
     return enabled;
   }
 
+  /**
+   * Mixes the pending queue once. Random order is switched off at the same
+   * time, so the freshly mixed order is what actually plays instead of being
+   * re-drawn on every skip.
+   */
   shuffleQueue(): number {
     const count = this.queue.shuffleAll();
+    this.queue.shuffle = false;
     this.emitUpdate();
     return count;
   }

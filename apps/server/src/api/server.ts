@@ -19,7 +19,9 @@ import { eventRoutes } from './routes/events.js';
 import { guildRoutes } from './routes/guilds.js';
 import { freeGamesRoutes, rolePanelRoutes } from './routes/misc.js';
 import { musicRoutes } from './routes/music.js';
+import { fluxRoutes } from './routes/flux.js';
 import { soundboardRoutes } from './routes/soundboard.js';
+import { ttsRoutes } from './routes/tts.js';
 import { spotifyRoutes } from './routes/spotify.js';
 import { registerWebsocket } from './ws.js';
 
@@ -113,6 +115,8 @@ export async function buildServer(): Promise<FastifyInstance> {
       await api.register(aiRoutes);
       await api.register(spotifyRoutes);
       await api.register(soundboardRoutes);
+      await api.register(fluxRoutes);
+      await api.register(ttsRoutes);
     },
     { prefix: '/api' },
   );

@@ -173,4 +173,52 @@ export const migrations: Migration[] = [
         ON free_game_posts (guild_id, title_key);
     `,
   },
+  {
+    version: 4,
+    name: 'generated images',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flux_images (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id           TEXT    NOT NULL,
+        index_in_batch     INTEGER NOT NULL DEFAULT 0,
+        prompt             TEXT    NOT NULL,
+        negative_prompt    TEXT    NOT NULL DEFAULT '',
+        seed               INTEGER NOT NULL DEFAULT -1,
+        width              INTEGER NOT NULL,
+        height             INTEGER NOT NULL,
+        steps              INTEGER NOT NULL,
+        cfg_scale          REAL    NOT NULL,
+        file_name          TEXT    NOT NULL,
+        upscaled_file_name TEXT,
+        saved              INTEGER NOT NULL DEFAULT 0,
+        duration_ms        INTEGER NOT NULL DEFAULT 0,
+        requested_by       TEXT    NOT NULL DEFAULT '',
+        created_at         INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_flux_images_created ON flux_images (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_flux_images_batch ON flux_images (batch_id);
+    `,
+  },
+  {
+    version: 5,
+    name: 'text to speech voices',
+    sql: `
+      CREATE TABLE IF NOT EXISTS tts_voices (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        name         TEXT    NOT NULL,
+        provider     TEXT    NOT NULL DEFAULT 'edge',
+        voice_id     TEXT    NOT NULL,
+        language     TEXT    NOT NULL DEFAULT '',
+        gender       TEXT    NOT NULL DEFAULT '',
+        description  TEXT    NOT NULL DEFAULT '',
+        command      TEXT    NOT NULL DEFAULT '',
+        command_args TEXT    NOT NULL DEFAULT '',
+        enabled      INTEGER NOT NULL DEFAULT 1,
+        is_default   INTEGER NOT NULL DEFAULT 0,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL,
+        UNIQUE (provider, voice_id)
+      );
+    `,
+  },
 ];

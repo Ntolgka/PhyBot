@@ -40,6 +40,8 @@ interface PendingUpdate {
 }
 
 const pending = new Map<string, PendingUpdate>();
+/** Guilds whose next refresh must post a new message instead of editing. */
+const repostWanted = new Set<string>();
 const messagesSincePost = new Map<string, number>();
 
 function readState(): PanelState {
@@ -117,6 +119,7 @@ async function writePanel(guildId: string): Promise<void> {
 
   const existing = readState()[guildId];
   const shouldRepost =
+    repostWanted.delete(guildId) ||
     (messagesSincePost.get(guildId) ?? 0) >= REPOST_AFTER_MESSAGES ||
     existing?.channelId !== channelId;
 
@@ -160,7 +163,11 @@ async function deleteMessage(location: PanelLocation): Promise<void> {
  * Requests a panel refresh. Updates are coalesced so a burst of player events
  * results in a single edit.
  */
-export function refreshPanel(guildId: string, options: { immediate?: boolean } = {}): void {
+export function refreshPanel(
+  guildId: string,
+  options: { immediate?: boolean; repost?: boolean } = {},
+): void {
+  if (options.repost) repostWanted.add(guildId);
   const entry = pending.get(guildId) ?? { timer: null, lastEditAt: 0, running: false };
   pending.set(guildId, entry);
 
@@ -241,10 +248,16 @@ export function registerMusicPanel(): void {
   // Position ticks, volume, loop and queue edits all arrive as player updates.
   bus.on('player:update', (snapshot) => refreshPanel(snapshot.guildId));
   bus.on('settings:update', (settings) => refreshPanel(settings.guildId, { immediate: true }));
-  playerManager.on('trackStart', ({ guildId }) => refreshPanel(guildId, { immediate: true }));
+  // Every new track gets its own message so the queue is actually seen,
+  // rather than an older message quietly changing further up the channel.
+  playerManager.on('trackStart', ({ guildId }) =>
+    refreshPanel(guildId, { immediate: true, repost: true }),
+  );
   playerManager.on('trackEnd', ({ guildId }) => refreshPanel(guildId));
   playerManager.on('queueEnd', ({ guildId }) => refreshPanel(guildId, { immediate: true }));
-  playerManager.on('created', ({ guildId }) => refreshPanel(guildId, { immediate: true }));
+  playerManager.on('created', ({ guildId }) =>
+    refreshPanel(guildId, { immediate: true, repost: true }),
+  );
   playerManager.on('destroyed', ({ guildId }) => refreshPanel(guildId, { immediate: true }));
 }
 

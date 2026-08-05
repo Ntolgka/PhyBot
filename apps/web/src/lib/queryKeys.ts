@@ -27,5 +27,11 @@ export const queryKeys = {
   aiSettings: ['ai', 'settings'] as const,
   aiStatus: ['ai', 'status'] as const,
   aiVoices: ['ai', 'voices'] as const,
+  ttsVoices: ['tts', 'voices'] as const,
+  ttsCatalog: ['tts', 'catalog'] as const,
   spotifyConnection: ['spotify', 'connection'] as const,
+  fluxStatus: ['flux', 'status'] as const,
+  fluxConfig: ['flux', 'config'] as const,
+  fluxImages: (limit: number, savedOnly: boolean) => ['flux', 'images', limit, savedOnly] as const,
+  fluxProgress: ['flux', 'progress'] as const,
 } as const;

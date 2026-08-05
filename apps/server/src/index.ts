@@ -7,6 +7,8 @@ import { RESTART_EXIT_CODE, isSupervised, onRestartRequested } from './core/life
 import { createLogger, logger } from './core/logger.js';
 import { toErrorMessage } from './core/errors.js';
 import { closeDatabase, getDatabase } from './db/database.js';
+import { voiceRegistry } from './ai/tts/index.js';
+import { cleanupOldImages, ensureFluxDirectories } from './flux/index.js';
 import { sessionsRepository } from './db/repositories/misc.js';
 import { APP_VERSION, stopBot } from './discord/client.js';
 import { startDiscord } from './discord/index.js';
@@ -34,6 +36,12 @@ async function main(): Promise<void> {
     );
   }
 
+  // Gives the voice pickers something to show on a fresh install.
+  voiceRegistry.seed();
+
+  ensureFluxDirectories();
+  cleanupOldImages();
+
   apiServer = await startApiServer();
 
   const runtime = await startDiscord();
@@ -42,6 +50,7 @@ async function main(): Promise<void> {
   maintenanceTimer = setInterval(
     () => {
       sessionsRepository.purgeExpired();
+      cleanupOldImages();
     },
     60 * 60 * 1000,
   );

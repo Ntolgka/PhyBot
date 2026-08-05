@@ -1,4 +1,4 @@
-import type { Message } from 'discord.js';
+import { AttachmentBuilder, type Message } from 'discord.js';
 import { truncate } from '@phybot/shared';
 import { chat, isConfigured } from '../ai/index.js';
 import { createLogger } from '../core/logger.js';
@@ -49,14 +49,23 @@ export async function handleMessage(message: Message): Promise<void> {
 
   try {
     await message.channel.sendTyping().catch(() => undefined);
+
+    // Image generation takes long enough that the typing indicator lapses;
+    // the files come back through this callback and are attached below.
+    const generated: string[] = [];
     const reply = await chat({
       message: prompt,
       userId: message.author.id,
       userName: message.member?.displayName ?? message.author.username,
       guildId: message.guildId,
       channelId: message.channelId,
+      onGeneratedImages: (files) => generated.push(...files),
     });
-    await message.reply({ content: truncate(reply, 1900) });
+
+    await message.reply({
+      content: truncate(reply, 1900),
+      files: generated.map((file) => new AttachmentBuilder(file)),
+    });
   } catch (error) {
     log.warn(`Assistant reply failed: ${toErrorMessage(error)}`);
     await message

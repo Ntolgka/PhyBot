@@ -8,6 +8,8 @@ export interface SpeakParams {
   guildId: string;
   text: string;
   voiceChannelId?: string;
+  /** Registry id of the voice to speak with; the default voice is used when absent. */
+  voiceId?: number;
 }
 
 /**
@@ -32,6 +34,6 @@ export async function speak(params: SpeakParams): Promise<void> {
   }
 
   const settings = getAiSettings();
-  const pcm = await synthesizeSpeech(trimmed, settings);
+  const pcm = await synthesizeSpeech(trimmed, settings, params.voiceId);
   await player.playAnnouncement(pcm);
 }

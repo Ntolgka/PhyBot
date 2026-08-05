@@ -37,6 +37,8 @@ function subscribeBus(): void {
   bus.on('ai:status', (data) => broadcast({ type: 'ai:status', data }));
   bus.on('ai:settings', (data) => broadcast({ type: 'ai:settings', data }));
   bus.on('ai:voice', (data) => broadcast({ type: 'ai:voice', data }));
+  bus.on('flux:progress', (data) => broadcast({ type: 'flux:progress', data }));
+  bus.on('flux:status', (data) => broadcast({ type: 'flux:status', data }));
   bus.on('notice', (data) => broadcast({ type: 'notice', data }));
   logBuffer.on('entry', (entry) => broadcast({ type: 'log', data: entry }));
 }

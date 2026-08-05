@@ -5,6 +5,8 @@ import type {
   AiVoiceEvent,
   BotProfile,
   BotStatus,
+  FluxProgress,
+  FluxStatus,
   FreeGamesStatus,
   GuildEvent,
   GuildSettings,
@@ -30,6 +32,8 @@ export interface AppEvents {
   'ai:status': [AiRuntimeStatus];
   'ai:settings': [AiSettings];
   'ai:voice': [AiVoiceEvent];
+  'flux:progress': [FluxProgress];
+  'flux:status': [FluxStatus];
   notice: [{ level: 'info' | 'warn' | 'error'; message: string }];
 }
 
