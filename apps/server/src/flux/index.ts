@@ -7,6 +7,7 @@ export {
 export {
   cleanupOldImages,
   deleteImage,
+  editImage,
   generateImages,
   getFluxStatus,
   getImage,
@@ -14,6 +15,8 @@ export {
   listImages,
   saveImage,
   upscaleImage,
+  type EditParams,
   type GenerateParams,
+  type UpscaleOptions,
 } from './service.js';
 export { fluxDir, fluxImagesDir, ensureFluxDirectories } from './paths.js';

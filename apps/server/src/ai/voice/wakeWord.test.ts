@@ -54,6 +54,29 @@ describe('matchesWakeWord', () => {
     expect(matchesWakeWord('', 'phy').matched).toBe(false);
   });
 
+  it('allows one filler word in front of the name', () => {
+    for (const heard of ['hey fay şarkıyı geç', 'okay fay sesi kıs', 'ee fay ne çalıyor']) {
+      const result = matchesWakeWord(heard, 'fay');
+      expect(result.matched).toBe(true);
+      expect(result.rest.startsWith('fay')).toBe(false);
+    }
+  });
+
+  it('ignores the name said in the middle of a sentence', () => {
+    // Talk about the bot, not to it: only a filler may come before the name.
+    expect(matchesWakeWord('ben ona dedim ki fay gelsin', 'fay').matched).toBe(false);
+    expect(matchesWakeWord('I was telling him about the fair yesterday', 'fay').matched).toBe(
+      false,
+    );
+  });
+
+  it('returns an empty request when only the name was said', () => {
+    // The listener needs this to stay quiet rather than answer nothing.
+    const result = matchesWakeWord('fay', 'fay');
+    expect(result.matched).toBe(true);
+    expect(result.rest).toBe('');
+  });
+
   it('tolerates a small typo in a custom wake word', () => {
     // "robo" is missing the trailing "t" - a one-character edit away from "robot".
     const result = matchesWakeWord('robo ışıkları aç', 'robot');

@@ -221,4 +221,13 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 6,
+    name: 'record how an image was upscaled and where it came from',
+    sql: `
+      ALTER TABLE flux_images ADD COLUMN upscaled_model TEXT NOT NULL DEFAULT '';
+      ALTER TABLE flux_images ADD COLUMN upscale_refined INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE flux_images ADD COLUMN source_image_id INTEGER;
+    `,
+  },
 ];

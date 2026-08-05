@@ -1,6 +1,8 @@
-import { ExternalServiceError, toErrorMessage } from '../../core/errors.js';
+import { ExternalServiceError, RateLimitError, toErrorMessage } from '../../core/errors.js';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+/** Used when a provider reports a rate limit without saying for how long. */
+const DEFAULT_RETRY_AFTER_MS = 60_000;
 
 interface BaseRequestOptions {
   url: string;
@@ -62,9 +64,10 @@ async function parseJsonResponse<T>(
 ): Promise<T> {
   if (!res.ok) {
     if (res.status === 429) {
-      throw new ExternalServiceError(
+      throw new RateLimitError(
         service,
         rateLimitMessage ?? 'Kullanim sinirina ulasildi, birazdan tekrar deneyin',
+        parseRetryAfter(res.headers.get('retry-after')),
       );
     }
     const detail = await safeErrorDetail(res);
@@ -75,6 +78,16 @@ async function parseJsonResponse<T>(
   } catch {
     throw new ExternalServiceError(service, 'Sunucudan gecersiz yanit alindi');
   }
+}
+
+/** Reads a `Retry-After` header, which may hold either seconds or a date. */
+function parseRetryAfter(header: string | null): number {
+  if (!header) return DEFAULT_RETRY_AFTER_MS;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 15 * 60_000);
+  const date = Date.parse(header);
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 15 * 60_000);
+  return DEFAULT_RETRY_AFTER_MS;
 }
 
 async function safeErrorDetail(res: Response): Promise<string> {

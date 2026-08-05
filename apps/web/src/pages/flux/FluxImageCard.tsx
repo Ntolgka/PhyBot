@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { FluxImage } from '@phybot/shared';
-import { Download, Loader2, Maximize2, Save, Trash2, Wand2, X } from 'lucide-react';
+import { Download, Loader2, Maximize2, Pencil, Save, Trash2, Wand2, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -49,28 +49,51 @@ function Lightbox({
   );
 }
 
+/** Value used by the picker for the upscale-then-redraw option. */
+const REFINE_VALUE = '__refine__';
+
 export function FluxImageCard({
   image,
+  upscaleModels,
+  defaultUpscaleModel,
   onDelete,
+  onEdit,
 }: {
   image: FluxImage;
+  /** Upscalers present in Flux/models, offered on the upscale button. */
+  upscaleModels: string[];
+  defaultUpscaleModel: string;
   onDelete: () => void;
+  onEdit: () => void;
 }): ReactNode {
   const hasUpscaled = image.upscaledFileName !== null;
   const [variant, setVariant] = useState<'original' | 'upscaled'>('original');
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [choice, setChoice] = useState(() =>
+    image.upscaleRefined ? REFINE_VALUE : image.upscaledModel || defaultUpscaleModel,
+  );
 
   const upscaleMutation = useUpscaleFluxImageMutation();
   const saveMutation = useSaveFluxImageMutation();
   const pushToast = useUiStore((state) => state.pushToast);
 
   const src = fluxImageUrl(image.id, variant);
+  const refine = choice === REFINE_VALUE;
 
   function handleUpscale(): void {
-    upscaleMutation.mutate(image.id, {
-      onSuccess: () => setVariant('upscaled'),
-      onError: (error) => pushToast({ level: 'error', message: errorMessage(error) }),
-    });
+    upscaleMutation.mutate(
+      {
+        id: image.id,
+        // Refining still needs an upscaler to enlarge first, so it falls back
+        // to the configured one.
+        model: refine ? defaultUpscaleModel : choice,
+        refine,
+      },
+      {
+        onSuccess: () => setVariant('upscaled'),
+        onError: (error) => pushToast({ level: 'error', message: errorMessage(error) }),
+      },
+    );
   }
 
   function handleSave(): void {
@@ -102,7 +125,9 @@ export function FluxImageCard({
         </span>
         <div className="absolute left-2 top-2 flex gap-1">
           {image.saved && <Badge variant="success">Saved</Badge>}
-          {hasUpscaled && <Badge variant="accent">Upscaled</Badge>}
+          {hasUpscaled && (
+            <Badge variant="accent">{image.upscaleRefined ? 'Refined' : 'Upscaled'}</Badge>
+          )}
         </div>
       </button>
 
@@ -139,21 +164,51 @@ export function FluxImageCard({
         </div>
       </div>
 
+      <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
+        <select
+          value={choice}
+          onChange={(e) => setChoice(e.target.value)}
+          disabled={upscaleMutation.isPending}
+          aria-label="Upscaler"
+          className="focus-ring min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-1.5 py-1 text-xs text-ink-dim disabled:opacity-50"
+        >
+          {upscaleModels.map((model) => (
+            <option key={model} value={model}>
+              {model.replace(/\.(pth|safetensors)$/, '')}
+            </option>
+          ))}
+          <option value={REFINE_VALUE}>Refine (sharpest, slow)</option>
+        </select>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={refine ? 'Upscale and redraw detail' : 'Upscale'}
+          title={
+            refine
+              ? 'Upscales, then redraws the detail with the model. Takes a couple of minutes.'
+              : 'Upscale'
+          }
+          disabled={upscaleMutation.isPending}
+          onClick={handleUpscale}
+        >
+          {upscaleMutation.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Wand2 className="size-3.5" />
+          )}
+        </Button>
+      </div>
+
       <div className="flex items-center justify-between gap-1 border-t border-border px-2 py-1.5">
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
-            aria-label={hasUpscaled ? 'Already upscaled' : 'Upscale'}
-            title={hasUpscaled ? 'Already upscaled' : 'Upscale'}
-            disabled={hasUpscaled || upscaleMutation.isPending}
-            onClick={handleUpscale}
+            aria-label="Edit with an instruction"
+            title="Edit with an instruction"
+            onClick={onEdit}
           >
-            {upscaleMutation.isPending ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Wand2 className="size-3.5" />
-            )}
+            <Pencil className="size-3.5" />
           </Button>
           <Button
             variant="ghost"

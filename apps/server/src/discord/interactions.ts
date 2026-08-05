@@ -13,7 +13,7 @@ import { handleEventInteraction, handleRolePanelInteraction } from '../features/
 import { playerManager } from '../music/manager.js';
 import { suggestVoices } from './commands/assistant.js';
 import { commandRegistry } from './commands/index.js';
-import { handleFluxButton } from './commands/imagine.js';
+import { handleFluxButton, handleFluxSelect } from './commands/imagine.js';
 import { executeSoundCommand, findSoundCommand } from './commands/soundboard.js';
 import { hasPermission, permissionMessage } from './commands/helpers.js';
 import { errorEmbed, musicControls, nowPlayingEmbed, queueEmbed, MUSIC_BUTTONS } from './embeds.js';
@@ -30,6 +30,10 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
     }
     if (interaction.isButton()) {
       await handleButton(interaction);
+      return;
+    }
+    if (interaction.isStringSelectMenu()) {
+      await handleFluxSelect(interaction);
       return;
     }
     if (interaction.isAutocomplete()) {

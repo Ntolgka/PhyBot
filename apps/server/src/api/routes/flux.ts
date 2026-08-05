@@ -1,9 +1,15 @@
 import { createReadStream, existsSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
-import { fluxConfigSchema, fluxGenerateSchema } from '@phybot/shared';
+import {
+  fluxConfigSchema,
+  fluxEditSchema,
+  fluxGenerateSchema,
+  fluxUpscaleSchema,
+} from '@phybot/shared';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import {
   deleteImage,
+  editImage,
   generateImages,
   getFluxConfig,
   getFluxStatus,
@@ -77,7 +83,20 @@ export async function fluxRoutes(app: FastifyInstance): Promise<void> {
   app.post('/flux/images/:id/upscale', async (request) => {
     const { id } = request.params as { id: string };
     request.raw.setTimeout(0);
-    return upscaleImage(parseImageId(id));
+    const body = parseBody(fluxUpscaleSchema, request.body ?? {});
+    return upscaleImage(parseImageId(id), body);
+  });
+
+  app.post('/flux/edit', async (request) => {
+    // Editing runs a full generation pass; the socket must not give up first.
+    request.raw.setTimeout(0);
+    const body = parseBody(fluxEditSchema, request.body);
+    const { image, ...rest } = body;
+    return editImage({
+      ...rest,
+      ...(image ? { imageData: Buffer.from(image.split(',', 2)[1] ?? '', 'base64') } : {}),
+      requestedBy: 'dashboard',
+    });
   });
 
   app.post('/flux/images/:id/save', async (request) => {

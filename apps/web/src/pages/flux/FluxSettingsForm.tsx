@@ -17,13 +17,43 @@ const BACKEND_LABEL: Record<FluxBackend, string> = {
   cpu: 'CPU (slowest)',
 };
 
-export function FluxSettingsForm({ initial }: { initial: FluxConfig }): ReactNode {
+/** What the bundled upscalers are good at, so the choice is not just a file name. */
+const UPSCALER_NOTE: Record<string, string> = {
+  'RealESRGAN_x4plus.pth': 'most detail on photos',
+  '4x-UltraSharp.pth': 'clean edges, fewer artefacts',
+  'RealESRGAN_x4plus_anime_6B.pth': 'anime and flat art, fastest',
+};
+
+function upscalerLabel(fileName: string): string {
+  const note = UPSCALER_NOTE[fileName];
+  return note ? `${fileName} - ${note}` : fileName;
+}
+
+export interface FluxSettingsFormProps {
+  initial: FluxConfig;
+  /** Upscaler files present in Flux/models, offered instead of a file name. */
+  upscaleModels: string[];
+}
+
+export function FluxSettingsForm({ initial, upscaleModels }: FluxSettingsFormProps): ReactNode {
   const [saved, setSaved] = useState(initial);
   const [form, setForm] = useState(initial);
   const updateMutation = useUpdateFluxConfigMutation();
   const pushToast = useUiStore((state) => state.pushToast);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+
+  // A configured file that is no longer on disk stays selectable, otherwise
+  // saving anything else would quietly discard it.
+  const missingSelection =
+    form.upscaleModel && !upscaleModels.includes(form.upscaleModel) ? form.upscaleModel : null;
+  const upscalerOptions = [
+    { value: '', label: 'None (upscaling off)' },
+    ...upscaleModels.map((name) => ({ value: name, label: upscalerLabel(name) })),
+    ...(missingSelection
+      ? [{ value: missingSelection, label: `${missingSelection} - missing from Flux/models` }]
+      : []),
+  ];
 
   function set<K extends keyof FluxConfig>(key: K, value: FluxConfig[K]): void {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -60,12 +90,12 @@ export function FluxSettingsForm({ initial }: { initial: FluxConfig }): ReactNod
             onChange={(e) => set('model', e.target.value)}
             maxLength={200}
           />
-          <Input
+          <Select
             label="Upscale model"
-            hint="Optional; needed for the Upscale button"
+            hint="Drop more ESRGAN weights into Flux/models to see them here"
             value={form.upscaleModel}
             onChange={(e) => set('upscaleModel', e.target.value)}
-            maxLength={200}
+            options={upscalerOptions}
           />
           <Input
             label="Text encoder (FLUX.2)"
@@ -141,6 +171,25 @@ export function FluxSettingsForm({ initial }: { initial: FluxConfig }): ReactNod
             step={0.5}
             value={form.cfgScale}
             onChange={(e) => set('cfgScale', Number(e.target.value))}
+          />
+          <Input
+            type="number"
+            label="Refine strength"
+            hint="How far the refine pass may move from the upscaled image"
+            min={0}
+            max={1}
+            step={0.05}
+            value={form.refineStrength}
+            onChange={(e) => set('refineStrength', Number(e.target.value))}
+          />
+          <Input
+            type="number"
+            label="Refine steps"
+            hint="Runs at the enlarged size, so this is the slow part"
+            min={1}
+            max={50}
+            value={form.refineSteps}
+            onChange={(e) => set('refineSteps', Number(e.target.value))}
           />
           <Input
             type="number"

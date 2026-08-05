@@ -38,6 +38,22 @@ export class ExternalServiceError extends AppError {
   }
 }
 
+/**
+ * A provider refused the request because its quota is exhausted. Callers can
+ * treat this differently from a real failure: waiting or switching to another
+ * provider fixes it, retrying the same one immediately does not.
+ */
+export class RateLimitError extends ExternalServiceError {
+  /** How long the provider asked us to wait, in milliseconds. */
+  readonly retryAfterMs: number;
+
+  constructor(service: string, message: string, retryAfterMs: number) {
+    super(service, message);
+    this.name = 'RateLimitError';
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;

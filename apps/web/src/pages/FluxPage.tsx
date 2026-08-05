@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { FluxImage } from '@phybot/shared';
+import { Pencil } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
+import { Button } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ErrorState } from '../components/ui/EmptyState';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -14,6 +16,7 @@ import {
   useFluxRealtimeSync,
   useFluxStatusQuery,
 } from '../features/flux/api';
+import { FluxEditDialog } from './flux/FluxEditDialog';
 import { FluxGallery } from './flux/FluxGallery';
 import { FluxGenerateForm } from './flux/FluxGenerateForm';
 import { FluxSettingsForm } from './flux/FluxSettingsForm';
@@ -30,6 +33,8 @@ export function FluxPage(): ReactNode {
   const pushToast = useUiStore((state) => state.pushToast);
 
   const [deleting, setDeleting] = useState<FluxImage | null>(null);
+  // null means closed; a number edits that image, 0 opens the upload form.
+  const [editing, setEditing] = useState<number | null>(null);
 
   const isLoading = status.isLoading || config.isLoading;
   const loadError = status.error ?? config.error;
@@ -74,7 +79,18 @@ export function FluxPage(): ReactNode {
           <FluxGenerateForm config={config.data} status={status.data} />
 
           <div>
-            <h2 className="mb-3 text-base font-semibold text-ink">Gallery</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-ink">Gallery</h2>
+              <Button
+                variant="secondary"
+                size="sm"
+                leadingIcon={<Pencil className="size-4" aria-hidden="true" />}
+                disabled={!ready}
+                onClick={() => setEditing(0)}
+              >
+                Edit an image
+              </Button>
+            </div>
             <FluxGallery
               images={images.data}
               isLoading={images.isLoading}
@@ -82,15 +98,29 @@ export function FluxPage(): ReactNode {
               errorDescription={errorMessage(images.error)}
               onRetry={() => images.refetch()}
               onDelete={(image) => setDeleting(image)}
+              onEdit={(image) => setEditing(image.id)}
+              upscaleModels={status.data.upscaleModels}
+              defaultUpscaleModel={config.data.upscaleModel}
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-6">
           <FluxStatusPanel status={status.data} />
-          <FluxSettingsForm key={JSON.stringify(config.data)} initial={config.data} />
+          <FluxSettingsForm
+            key={JSON.stringify(config.data)}
+            initial={config.data}
+            upscaleModels={status.data.upscaleModels}
+          />
         </div>
       </div>
+
+      {editing !== null && (
+        <FluxEditDialog
+          {...(editing > 0 ? { imageId: editing } : {})}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={deleting !== null}

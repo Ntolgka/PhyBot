@@ -4,7 +4,7 @@ import { ACTIVITY_TYPES, PRESENCE_STATUSES } from './types/bot.js';
 import { AI_PROVIDERS, STT_PROVIDERS } from './types/ai.js';
 import { CUSTOM_COMMAND_TYPES } from './types/commands.js';
 import { GAME_STORES } from './types/freegames.js';
-import { FLUX_BACKENDS, MAX_FLUX_BATCH, MIN_FLUX_BATCH } from './types/flux.js';
+import { FLUX_BACKENDS, FLUX_STYLES, MAX_FLUX_BATCH, MIN_FLUX_BATCH } from './types/flux.js';
 import { LOOP_MODES } from './types/music.js';
 import { RSVP_STATUSES } from './types/events.js';
 import { TTS_PROVIDERS } from './types/tts.js';
@@ -190,6 +190,7 @@ export const soundPlaySchema = z.object({
 export const fluxGenerateSchema = z.object({
   prompt: z.string().min(1, 'Describe the image you want').max(1500),
   negativePrompt: z.string().max(1000).optional(),
+  style: z.enum(FLUX_STYLES).optional(),
   count: z.number().int().min(MIN_FLUX_BATCH).max(MAX_FLUX_BATCH).optional(),
   width: z.number().int().min(256).max(1536).optional(),
   height: z.number().int().min(256).max(1536).optional(),
@@ -197,6 +198,37 @@ export const fluxGenerateSchema = z.object({
   cfgScale: z.number().min(0).max(20).optional(),
   /** -1 asks for a random seed. */
   seed: z.number().int().min(-1).max(2_147_483_647).optional(),
+});
+
+const sourceImageDataUrl = z
+  .string()
+  .regex(
+    /^data:image\/(png|jpeg|jpg|webp|gif|bmp);base64,[A-Za-z0-9+/=]+$/i,
+    'Upload an image (png, jpeg, webp, gif or bmp)',
+  )
+  // Roughly 12 MB of bytes once decoded, which covers a phone photo.
+  .max(16_000_000, 'That image is too large');
+
+export const fluxEditSchema = z
+  .object({
+    prompt: z.string().min(1, 'Describe the change you want').max(1500),
+    /** Gallery image to edit; give this or `image`, not neither. */
+    imageId: z.number().int().positive().optional(),
+    image: sourceImageDataUrl.optional(),
+    count: z.number().int().min(MIN_FLUX_BATCH).max(MAX_FLUX_BATCH).optional(),
+    steps: z.number().int().min(1).max(50).optional(),
+    seed: z.number().int().min(-1).max(2_147_483_647).optional(),
+  })
+  .refine((value) => Boolean(value.imageId) !== Boolean(value.image), {
+    message: 'Provide either an image to upload or the id of one already in the gallery',
+    path: ['image'],
+  });
+
+export const fluxUpscaleSchema = z.object({
+  /** Upscaler file name; defaults to the configured one. */
+  model: z.string().max(200).optional(),
+  /** Follow the upscale with a diffusion pass that adds real detail. */
+  refine: z.boolean().optional(),
 });
 
 export const fluxConfigSchema = z
@@ -208,6 +240,8 @@ export const fluxConfigSchema = z
     llm: z.string().max(200),
     vae: z.string().min(1).max(200),
     upscaleModel: z.string().max(200),
+    refineStrength: z.number().min(0).max(1),
+    refineSteps: z.number().int().min(1).max(50),
     steps: z.number().int().min(1).max(50),
     cfgScale: z.number().min(0).max(20),
     width: z.number().int().min(256).max(1536),

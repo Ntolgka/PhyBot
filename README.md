@@ -42,8 +42,19 @@ changing the bot's own name, avatar, banner, description and presence.
   and there is nothing to pay for
 - One to four images per prompt, from Discord with /imagine or from the
   dashboard, with buttons to upscale or keep each one
-- Defaults to 512 by 512 at four steps; larger sizes are a setting away.
+- A style picker (photo, cinematic, illustration, anime, 3D render) that pins
+  the look down; left unset, the model chooses one per seed
+- Defaults to 1024 by 1024 at four steps; other sizes are a setting away.
   About 5 GB of weights, which fits an 8 GB card comfortably
+- Edit a picture by describing the change: send an image with /edit, upload one
+  in the dashboard, or edit anything already in the gallery. What the
+  instruction does not mention stays as it was
+- Three upscalers are downloaded alongside it and either the whole gallery
+  default or a single image can use any of them: one for photographic detail,
+  one for clean edges, and a fast one for flat art. Any other ESRGAN model
+  dropped into Flux/models shows up in the list too
+- A refine option follows the upscale with a short diffusion pass, which draws
+  real detail instead of interpolating it. Slower, and capped at 2048
 - Everything the generator needs lives in the Flux folder; run
   `npm run flux:setup` once to download it
 
@@ -78,10 +89,10 @@ changing the bot's own name, avatar, banner, description and presence.
 
 - Understands and replies in Turkish (or English) using a free provider:
   Google Gemini, Groq, or a fully local Ollama model
-- Optional voice mode: say the wake word ("fay" by default), ask a question or
-  give an order, and it answers out loud in the voice channel. For 15 seconds
-  after each reply you can keep talking without repeating the wake word, and
-  saying the wake word again cuts a reply short
+- Optional voice mode: say the wake word ("fay" by default) followed by the
+  request in the same breath, and it answers out loud in the voice channel. It
+  only acts on speech that starts with the wake word, so the rest of the
+  conversation in the channel is left alone; saying it again cuts a reply short
 - It both chats and acts: small talk gets a spoken answer, while "play this",
   "skip", "turn it down" control the player directly
 

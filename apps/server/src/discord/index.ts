@@ -1,5 +1,6 @@
 import { Events, type Client, type GuildMember, type PartialGuildMember } from 'discord.js';
 import type { GuildSummary } from '@phybot/shared';
+import { resumeListening } from '../ai/index.js';
 import { bus } from '../core/bus.js';
 import { config } from '../core/config.js';
 import { createLogger } from '../core/logger.js';
@@ -48,6 +49,9 @@ function registerEvents(client: Client): void {
     startFeatureSchedulers();
     // Redraw the music panels so their buttons work again after a restart.
     await restorePanels();
+    // Rejoin the channels the assistant was listening in, so a restart does not
+    // silently switch voice commands off.
+    await resumeListening();
     publishGuilds(ready);
     bus.emit('bot:status', getStatus());
   });

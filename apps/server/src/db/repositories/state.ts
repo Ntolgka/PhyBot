@@ -39,6 +39,7 @@ export const stateRepository = {
 export const STATE_KEYS = {
   presence: 'bot:presence',
   aiSettings: 'ai:settings',
+  aiListening: 'ai:listening',
   freeGamesCache: 'freegames:cache',
   freeGamesMeta: 'freegames:meta',
   spotifyAuth: 'spotify:auth',

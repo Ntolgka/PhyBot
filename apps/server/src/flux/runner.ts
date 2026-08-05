@@ -221,12 +221,15 @@ export async function runGeneration(
 export interface UpscaleRunOptions {
   inputPath: string;
   outputPath: string;
+  /** Overrides the configured upscaler for this run. */
+  model?: string;
   onProgress?: (progress: RunProgress) => void;
 }
 
-/** Enlarges an existing image with the configured ESRGAN model. */
+/** Enlarges an existing image with an ESRGAN model. */
 export async function runUpscale(config: FluxConfig, options: UpscaleRunOptions): Promise<void> {
-  if (!config.upscaleModel) {
+  const model = options.model || config.upscaleModel;
+  if (!model) {
     throw new ExternalServiceError('flux', 'No upscale model is configured');
   }
 
@@ -234,7 +237,7 @@ export async function runUpscale(config: FluxConfig, options: UpscaleRunOptions)
     '-M',
     'upscale',
     '--upscale-model',
-    requireModel(config.upscaleModel, 'upscale model'),
+    requireModel(model, 'upscale model'),
     '-i',
     options.inputPath,
     '-o',
@@ -245,4 +248,141 @@ export async function runUpscale(config: FluxConfig, options: UpscaleRunOptions)
   ];
 
   await run(args, { ...(options.onProgress ? { onProgress: options.onProgress } : {}) });
+}
+
+export interface RefineRunOptions {
+  inputPath: string;
+  outputPath: string;
+  prompt: string;
+  width: number;
+  height: number;
+  /** How far the image may move from the input; low values keep the picture. */
+  strength: number;
+  steps: number;
+  seed: number;
+  onProgress?: (progress: RunProgress) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * Runs the diffusion model over an already enlarged image at low strength.
+ *
+ * An ESRGAN upscaler can only interpolate what is there, so a 4x enlargement of
+ * a soft area stays soft. Denoising the result at around 0.3 lets the model draw
+ * the detail in - stone that reads as stone rather than a smooth gradient - at
+ * the cost of a full generation pass at the larger size.
+ */
+export async function runRefine(config: FluxConfig, options: RefineRunOptions): Promise<void> {
+  const args = [
+    '-M',
+    'img_gen',
+    '--diffusion-model',
+    requireModel(config.model, 'diffusion model'),
+    ...textEncoderArgs(config),
+    '--vae',
+    requireModel(config.vae, 'VAE'),
+    '-i',
+    options.inputPath,
+    '--strength',
+    options.strength.toFixed(2),
+    '-p',
+    options.prompt,
+    '-W',
+    String(options.width),
+    '-H',
+    String(options.height),
+    '--steps',
+    String(options.steps),
+    '--cfg-scale',
+    String(config.cfgScale),
+    '--sampling-method',
+    config.sampler,
+    '-s',
+    String(options.seed),
+    '-o',
+    options.outputPath,
+    '-t',
+    String(config.threads),
+    ...backendArgs(config),
+  ];
+
+  if (config.diffusionFlashAttention) args.push('--diffusion-fa');
+  // Always tiled: the refine pass runs at the enlarged size, where decoding the
+  // image in one piece is what runs the card out of memory.
+  args.push('--vae-tiling');
+  if (config.offloadToCpu) args.push('--offload-to-cpu');
+
+  await run(args, {
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+}
+
+export interface EditRunOptions {
+  /** Images the model is asked to work from; the first is the one being edited. */
+  referencePaths: string[];
+  outputPath: string;
+  prompt: string;
+  width: number;
+  height: number;
+  steps: number;
+  seed: number;
+  batchCount: number;
+  onProgress?: (progress: RunProgress) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * Edits an existing image from a written instruction. FLUX.2 takes the picture
+ * as a reference rather than as a starting noise level, so the parts the
+ * instruction does not mention stay as they were instead of drifting.
+ */
+export async function runEdit(config: FluxConfig, options: EditRunOptions): Promise<void> {
+  const args = [
+    '-M',
+    'img_gen',
+    '--diffusion-model',
+    requireModel(config.model, 'diffusion model'),
+    ...textEncoderArgs(config),
+    '--vae',
+    requireModel(config.vae, 'VAE'),
+  ];
+
+  for (const path of options.referencePaths) args.push('-r', path);
+  // Numbers the references in the order given, which is what lets a prompt say
+  // "put the object from the second image into the first".
+  if (options.referencePaths.length > 1) args.push('--increase-ref-index');
+
+  args.push(
+    '-p',
+    options.prompt,
+    '-W',
+    String(options.width),
+    '-H',
+    String(options.height),
+    '--steps',
+    String(options.steps),
+    '--cfg-scale',
+    String(config.cfgScale),
+    '--sampling-method',
+    config.sampler,
+    '-s',
+    String(options.seed),
+    '-b',
+    String(options.batchCount),
+    '-o',
+    options.outputPath,
+    '-t',
+    String(config.threads),
+    ...backendArgs(config),
+  );
+
+  if (config.diffusionFlashAttention) args.push('--diffusion-fa');
+  if (config.vaeTiling) args.push('--vae-tiling');
+  if (config.offloadToCpu) args.push('--offload-to-cpu');
+
+  await run(args, {
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
 }

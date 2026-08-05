@@ -14,6 +14,9 @@ interface ImageRow {
   cfg_scale: number;
   file_name: string;
   upscaled_file_name: string | null;
+  upscaled_model: string;
+  upscale_refined: number;
+  source_image_id: number | null;
   saved: number;
   duration_ms: number;
   requested_by: string;
@@ -34,6 +37,9 @@ function toImage(row: ImageRow): FluxImage {
     cfgScale: row.cfg_scale,
     fileName: row.file_name,
     upscaledFileName: row.upscaled_file_name,
+    upscaledModel: row.upscaled_model,
+    upscaleRefined: row.upscale_refined === 1,
+    sourceImageId: row.source_image_id,
     saved: row.saved === 1,
     durationMs: row.duration_ms,
     requestedBy: row.requested_by,
@@ -54,6 +60,8 @@ export interface NewImage {
   fileName: string;
   durationMs: number;
   requestedBy: string;
+  /** Set when this image was produced by editing another one. */
+  sourceImageId?: number | null;
 }
 
 export const fluxRepository = {
@@ -61,8 +69,8 @@ export const fluxRepository = {
     const { lastInsertRowid } = execute(
       `INSERT INTO flux_images
          (batch_id, index_in_batch, prompt, negative_prompt, seed, width, height, steps,
-          cfg_scale, file_name, duration_ms, requested_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          cfg_scale, file_name, duration_ms, requested_by, source_image_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.batchId,
       input.indexInBatch,
       input.prompt,
@@ -75,6 +83,7 @@ export const fluxRepository = {
       input.fileName,
       input.durationMs,
       input.requestedBy,
+      input.sourceImageId ?? null,
       Date.now(),
     );
     const created = this.getById(lastInsertRowid);
@@ -109,8 +118,14 @@ export const fluxRepository = {
     execute('UPDATE flux_images SET saved = ? WHERE id = ?', saved ? 1 : 0, id);
   },
 
-  setUpscaled(id: number, fileName: string | null): void {
-    execute('UPDATE flux_images SET upscaled_file_name = ? WHERE id = ?', fileName, id);
+  setUpscaled(id: number, fileName: string | null, model = '', refined = false): void {
+    execute(
+      'UPDATE flux_images SET upscaled_file_name = ?, upscaled_model = ?, upscale_refined = ? WHERE id = ?',
+      fileName,
+      model,
+      refined ? 1 : 0,
+      id,
+    );
   },
 
   delete(id: number): void {

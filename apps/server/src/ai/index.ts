@@ -1,6 +1,7 @@
 import type { AiRuntimeStatus, AiSettings } from '@phybot/shared';
 import { bus } from '../core/bus.js';
 import { AppError } from '../core/errors.js';
+import { settingsRepository } from '../db/repositories/settings.js';
 import { playerManager } from '../music/manager.js';
 import { join } from '../music/service.js';
 import { runChat, type ChatParams } from './assistant.js';
@@ -12,7 +13,12 @@ import {
 import { speak } from './speak.js';
 import { getAiStatus as readAiStatus } from './status.js';
 import { listVoices as readVoices } from './tts/index.js';
-import { startListening, stopAllListening, stopListening } from './voice/listener.js';
+import {
+  startListening,
+  stopAllListening,
+  stopListening,
+  storedListeningSessions,
+} from './voice/listener.js';
 
 /** Returns the persisted assistant settings, seeded from `.env` on first use. */
 export function getAiSettings(): AiSettings {
@@ -80,6 +86,16 @@ export async function setListening(params: SetListeningParams): Promise<AiRuntim
     return getAiStatus();
   }
 
+  // The per-server switch used to be display only, which made a server with the
+  // assistant turned off look like a broken bot instead of a disabled feature.
+  if (!settingsRepository.get(params.guildId).aiVoiceEnabled) {
+    throw new AppError(
+      'ai_voice_disabled',
+      'Sesli asistan bu sunucu icin kapali, once ayarlardan acin',
+      400,
+    );
+  }
+
   const settings = getAiSettings();
   if (settings.sttProvider === 'none' || !getAiStatus().sttReady) {
     throw new AppError(
@@ -111,6 +127,25 @@ export async function setListening(params: SetListeningParams): Promise<AiRuntim
 
   startListening({ guildId: params.guildId, connection, player });
   return getAiStatus();
+}
+
+/**
+ * Reopens the listening sessions that were active before the last shutdown, so
+ * a restart does not quietly switch the assistant off.
+ */
+export async function resumeListening(): Promise<void> {
+  for (const session of storedListeningSessions()) {
+    try {
+      await setListening({
+        guildId: session.guildId,
+        enabled: true,
+        voiceChannelId: session.voiceChannelId,
+      });
+    } catch {
+      // The channel may be gone or the provider unset; the session is dropped.
+      stopListening(session.guildId);
+    }
+  }
 }
 
 /** Stops every background activity owned by this module; safe to call repeatedly. */

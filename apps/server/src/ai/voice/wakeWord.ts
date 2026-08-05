@@ -66,6 +66,36 @@ const PHY_ALIASES = new Set([
   'faybold',
 ]);
 
+/**
+ * Words people put in front of the name, and the noises speech recognition
+ * writes down when someone clears their throat first. One of these may precede
+ * the wake word; anything else means the name was said mid-sentence, which is
+ * talk about the bot rather than talk to it.
+ */
+const LEADING_FILLERS = new Set([
+  'hey',
+  'ey',
+  'hi',
+  'hello',
+  'ok',
+  'okay',
+  'so',
+  'um',
+  'uh',
+  'er',
+  'ee',
+  'eee',
+  'ya',
+  'ha',
+  'he',
+  'selam',
+  'merhaba',
+  'tamam',
+  'peki',
+  'bak',
+  'sey',
+]);
+
 export interface WakeWordMatch {
   matched: boolean;
   /** The transcript with the wake word removed, trimmed. Empty when no match. */
@@ -75,6 +105,11 @@ export interface WakeWordMatch {
 /**
  * Checks whether a transcript opens with the configured wake word, tolerating
  * minor STT mishearings, and returns the remainder to send to the assistant.
+ *
+ * The name may be preceded by a single filler word, because "hey fay, skip
+ * this" is how people actually talk and recognition likes to prefix a stray
+ * "ee" to whatever it heard first. Everything from the name onwards is the
+ * request.
  */
 export function matchesWakeWord(transcript: string, wakeWord: string): WakeWordMatch {
   const normalizedWake = normalizeTranscript(wakeWord);
@@ -82,15 +117,26 @@ export function matchesWakeWord(transcript: string, wakeWord: string): WakeWordM
 
   const wakeTokens = normalizedWake.split(' ');
   const transcriptTokens = normalizeTranscript(transcript).split(' ').filter(Boolean);
-  if (transcriptTokens.length < wakeTokens.length) return { matched: false, rest: '' };
-
-  const candidate = transcriptTokens.slice(0, wakeTokens.length).join(' ');
-  const distance = levenshteinDistance(candidate, normalizedWake);
   const threshold = Math.max(1, Math.floor(normalizedWake.length / 4));
-  const isAliasMatch =
-    wakeTokens.length === 1 && PHY_ALIASES.has(normalizedWake) && PHY_ALIASES.has(candidate);
 
-  if (distance > threshold && !isAliasMatch) return { matched: false, rest: '' };
+  for (let offset = 0; offset <= 1; offset += 1) {
+    if (offset > 0 && !LEADING_FILLERS.has(transcriptTokens[offset - 1] ?? '')) break;
+    if (transcriptTokens.length < offset + wakeTokens.length) break;
 
-  return { matched: true, rest: transcriptTokens.slice(wakeTokens.length).join(' ').trim() };
+    const candidate = transcriptTokens.slice(offset, offset + wakeTokens.length).join(' ');
+    const isAliasMatch =
+      wakeTokens.length === 1 && PHY_ALIASES.has(normalizedWake) && PHY_ALIASES.has(candidate);
+
+    if (levenshteinDistance(candidate, normalizedWake) <= threshold || isAliasMatch) {
+      return {
+        matched: true,
+        rest: transcriptTokens
+          .slice(offset + wakeTokens.length)
+          .join(' ')
+          .trim(),
+      };
+    }
+  }
+
+  return { matched: false, rest: '' };
 }

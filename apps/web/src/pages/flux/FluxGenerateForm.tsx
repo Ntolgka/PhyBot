@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import type { FluxConfig, FluxStatus } from '@phybot/shared';
-import { MAX_FLUX_BATCH, MIN_FLUX_BATCH } from '@phybot/shared';
+import type { FluxConfig, FluxStatus, FluxStyle } from '@phybot/shared';
+import { FLUX_STYLE_LABEL, FLUX_STYLES, MAX_FLUX_BATCH, MIN_FLUX_BATCH } from '@phybot/shared';
 import { ChevronDown, ChevronUp, Wand2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -49,6 +49,7 @@ export function FluxGenerateForm({
 }): ReactNode {
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
+  const [style, setStyle] = useState<FluxStyle>('none');
   const [count, setCount] = useState(1);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedState>(() => advancedFromConfig(config));
@@ -78,6 +79,7 @@ export function FluxGenerateForm({
       steps: advanced.steps,
       cfgScale: advanced.cfgScale,
       ...(negativePrompt.trim() ? { negativePrompt: negativePrompt.trim() } : {}),
+      ...(style !== 'none' ? { style } : {}),
       ...(advanced.seed >= 0 ? { seed: advanced.seed } : {}),
     };
 
@@ -102,6 +104,31 @@ export function FluxGenerateForm({
         disabled={busy}
         required
       />
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-ink-dim">Style</span>
+        <div className="flex flex-wrap gap-1 rounded-lg border border-border-strong bg-surface-2 p-1">
+          {FLUX_STYLES.map((value) => (
+            <button
+              key={value}
+              type="button"
+              disabled={busy}
+              onClick={() => setStyle(value)}
+              aria-pressed={style === value}
+              className={cn(
+                'focus-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50',
+                style === value ? 'accent-gradient text-white' : 'text-ink-dim hover:text-ink',
+              )}
+            >
+              {FLUX_STYLE_LABEL[value]}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-ink-faint">
+          Without a style the model picks one per seed, so the same prompt can come back as a
+          photograph or as artwork.
+        </p>
+      </div>
 
       <Textarea
         label="Negative prompt"

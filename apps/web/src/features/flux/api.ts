@@ -6,6 +6,7 @@ import type {
   FluxImage,
   FluxProgress,
   FluxStatus,
+  FluxStyle,
   ServerMessage,
 } from '@phybot/shared';
 import { api } from '../../lib/api';
@@ -19,6 +20,7 @@ const FLUX_IMAGES_PREFIX = ['flux', 'images'] as const;
 export interface FluxGenerateParams {
   prompt: string;
   negativePrompt?: string;
+  style?: FluxStyle;
   count?: number;
   width?: number;
   height?: number;
@@ -87,11 +89,40 @@ function patchCachedImage(
   );
 }
 
+export interface FluxUpscaleParams {
+  id: number;
+  /** Upscaler file name; the configured default is used when omitted. */
+  model?: string;
+  /** Follow the upscale with a diffusion pass that draws real detail in. */
+  refine?: boolean;
+}
+
 export function useUpscaleFluxImageMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => api.post<FluxImage>(`/flux/images/${id}/upscale`),
+    mutationFn: ({ id, ...body }: FluxUpscaleParams) =>
+      api.post<FluxImage>(`/flux/images/${id}/upscale`, body),
     onSuccess: (data) => patchCachedImage(queryClient, data.id, () => data),
+  });
+}
+
+export interface FluxEditParams {
+  prompt: string;
+  /** A data URL for an upload, or the id of an image already in the gallery. */
+  image?: string;
+  imageId?: number;
+  count?: number;
+  seed?: number;
+}
+
+export function useEditFluxMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: FluxEditParams) => api.post<FluxGenerationResult>('/flux/edit', params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: FLUX_IMAGES_PREFIX });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fluxStatus });
+    },
   });
 }
 

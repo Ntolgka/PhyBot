@@ -12,6 +12,9 @@ export function FluxGallery({
   errorDescription,
   onRetry,
   onDelete,
+  onEdit,
+  upscaleModels,
+  defaultUpscaleModel,
 }: {
   images: FluxImage[] | undefined;
   isLoading: boolean;
@@ -19,6 +22,9 @@ export function FluxGallery({
   errorDescription?: string;
   onRetry: () => void;
   onDelete: (image: FluxImage) => void;
+  onEdit: (image: FluxImage) => void;
+  upscaleModels: string[];
+  defaultUpscaleModel: string;
 }): ReactNode {
   if (isLoading) {
     return (
@@ -47,7 +53,14 @@ export function FluxGallery({
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {images.map((image) => (
-        <FluxImageCard key={image.id} image={image} onDelete={() => onDelete(image)} />
+        <FluxImageCard
+          key={image.id}
+          image={image}
+          upscaleModels={upscaleModels}
+          defaultUpscaleModel={defaultUpscaleModel}
+          onDelete={() => onDelete(image)}
+          onEdit={() => onEdit(image)}
+        />
       ))}
     </div>
   );

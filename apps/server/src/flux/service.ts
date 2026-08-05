@@ -1,24 +1,47 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
-import type { FluxGenerationResult, FluxImage, FluxStatus } from '@phybot/shared';
+import type {
+  FluxConfig,
+  FluxGenerationResult,
+  FluxImage,
+  FluxStatus,
+  FluxStyle,
+} from '@phybot/shared';
 import { MAX_FLUX_BATCH, MIN_FLUX_BATCH } from '@phybot/shared';
 import { bus } from '../core/bus.js';
 import { AppError, ConflictError, ExternalServiceError, NotFoundError } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
 import { getFluxConfig } from './config.js';
+import { fitToModel, prepareInputImage, REFINE_MAX_SIDE } from './imageInput.js';
 import {
   ensureFluxDirectories,
   fluxDir,
   fluxImagesDir,
+  fluxModelsDir,
   imagePath,
   isFluxInstalled,
   modelPath,
 } from './paths.js';
 import { fluxRepository } from './repository.js';
-import { runGeneration, runUpscale } from './runner.js';
+import { runEdit, runGeneration, runRefine, runUpscale } from './runner.js';
+import { applyStyle } from './style.js';
 
 const log = createLogger('flux');
+
+/** ESRGAN models in this pipeline are all four times enlargements. */
+const UPSCALE_FACTOR = 4;
+
+/**
+ * Size the refine pass runs at: the enlarged size, held to what the card can
+ * sample. A four times upscale of a 1024 image is 4096, which fails, so those
+ * come back at 2048 with real detail instead of 4096 of interpolation.
+ */
+function refineSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, REFINE_MAX_SIDE / Math.max(width, height));
+  const round = (value: number): number => Math.round((value * scale) / 64) * 64;
+  return { width: round(width), height: round(height) };
+}
 
 /** The generator uses the whole GPU, so only one job runs at a time. */
 let running = false;
@@ -34,11 +57,35 @@ export interface GenerateParams {
   steps?: number;
   cfgScale?: number;
   seed?: number;
+  /** Appends wording that pins the look down; the seed decides otherwise. */
+  style?: FluxStyle;
   requestedBy?: string;
 }
 
 function publishStatus(): void {
   bus.emit('flux:status', getFluxStatus());
+}
+
+/** Extensions ESRGAN weights ship in; the binary only understands that family. */
+const UPSCALER_EXTENSIONS = new Set(['.pth', '.safetensors']);
+
+/**
+ * Lists the upscaler weights sitting in the models directory so the dashboard
+ * can offer them instead of asking for a file name. Anything the generation
+ * pipeline already uses is left out - a VAE is not an upscaler.
+ */
+function listUpscaleModels(config: FluxConfig): string[] {
+  const inUse = new Set(
+    [config.model, config.clipL, config.t5, config.llm, config.vae].filter(Boolean),
+  );
+  try {
+    return readdirSync(fluxModelsDir)
+      .filter((name) => UPSCALER_EXTENSIONS.has(extname(name).toLowerCase()) && !inUse.has(name))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    // The directory only exists after the setup script has run once.
+    return [];
+  }
 }
 
 export function getFluxStatus(): FluxStatus {
@@ -74,6 +121,7 @@ export function getFluxStatus(): FluxStatus {
     modelsReady: required.every(([fileName]) => existsSync(modelPath(fileName))),
     backend: config.backend,
     missing,
+    upscaleModels: listUpscaleModels(config),
     busy: running,
     queued,
     lastError,
@@ -121,6 +169,8 @@ export async function generateImages(params: GenerateParams): Promise<FluxGenera
   const cfgScale = params.cfgScale ?? config.cfgScale;
   const baseSeed = params.seed !== undefined && params.seed >= 0 ? params.seed : randomSeed();
   const batchId = randomUUID().replace(/-/g, '').slice(0, 12);
+  // Stored as one string so the gallery shows exactly what produced the image.
+  const prompt = applyStyle(params.prompt, params.style);
 
   /**
    * A negative prompt only means something when classifier free guidance is
@@ -144,7 +194,7 @@ export async function generateImages(params: GenerateParams): Promise<FluxGenera
 
   try {
     await runGeneration(config, {
-      prompt: params.prompt,
+      prompt,
       negativePrompt,
       width,
       height,
@@ -178,7 +228,7 @@ export async function generateImages(params: GenerateParams): Promise<FluxGenera
       fluxRepository.create({
         batchId,
         indexInBatch: index,
-        prompt: params.prompt,
+        prompt,
         negativePrompt,
         // A batch increments the seed per image, matching the binary.
         seed: baseSeed + index,
@@ -227,18 +277,35 @@ export function imageFilePath(
   return imagePath(fileName);
 }
 
-export async function upscaleImage(id: number): Promise<FluxImage> {
+export interface UpscaleOptions {
+  /** Upscaler to use for this image; defaults to the configured one. */
+  model?: string;
+  /** Follows the upscale with a diffusion pass that draws real detail in. */
+  refine?: boolean;
+}
+
+export async function upscaleImage(id: number, options: UpscaleOptions = {}): Promise<FluxImage> {
   const image = getImage(id);
-  if (image.upscaledFileName && existsSync(imageFilePath(image, 'upscaled'))) {
+  const config = getFluxConfig();
+  const model = options.model || config.upscaleModel;
+  const refine = options.refine ?? false;
+
+  // Re-running with the same recipe would burn a minute to rewrite the same
+  // file, but asking for a different upscaler is a real request.
+  if (
+    image.upscaledFileName &&
+    image.upscaledModel === model &&
+    image.upscaleRefined === refine &&
+    existsSync(imageFilePath(image, 'upscaled'))
+  ) {
     return image;
   }
   assertReady();
 
-  const config = getFluxConfig();
-  if (!config.upscaleModel || !existsSync(modelPath(config.upscaleModel))) {
+  if (!model || !existsSync(modelPath(model))) {
     throw new AppError(
       'flux_no_upscaler',
-      `The upscale model (${config.upscaleModel || 'not configured'}) is missing from Flux/models. Run "npm run flux:setup".`,
+      `The upscale model (${model || 'not configured'}) is missing from Flux/models. Run "npm run flux:setup".`,
       503,
     );
   }
@@ -249,33 +316,200 @@ export async function upscaleImage(id: number): Promise<FluxImage> {
   const source = imageFilePath(image);
   if (!existsSync(source)) throw new NotFoundError('The image file is gone');
 
-  const outputName = `${basename(image.fileName, extname(image.fileName))}_upscaled.png`;
+  const stem = basename(image.fileName, extname(image.fileName));
+  const outputName = `${stem}_upscaled.png`;
+  const outputPath = imagePath(outputName);
   running = true;
   publishStatus();
+
+  const emit = (message: string, step: number, totalSteps: number): void => {
+    bus.emit('flux:progress', {
+      batchId: image.batchId,
+      index: 1,
+      total: 1,
+      step,
+      totalSteps,
+      message,
+      at: Date.now(),
+    });
+  };
 
   try {
     await runUpscale(config, {
       inputPath: source,
-      outputPath: imagePath(outputName),
+      outputPath,
+      model,
+      onProgress: (progress) => emit('upscaling', progress.step, progress.totalSteps),
+    });
+
+    if (!existsSync(outputPath)) {
+      throw new ExternalServiceError('flux', 'The upscaler finished without writing an image');
+    }
+
+    if (refine && config.refineStrength > 0) {
+      // The enlarged file is both the input and the destination, so the pass
+      // writes to a temporary name first rather than reading a file it is
+      // replacing.
+      const refinedName = `${stem}_refined.png`;
+      const refinedPath = imagePath(refinedName);
+      const size = refineSize(image.width * UPSCALE_FACTOR, image.height * UPSCALE_FACTOR);
+      await runRefine(config, {
+        inputPath: outputPath,
+        outputPath: refinedPath,
+        prompt: image.prompt,
+        width: size.width,
+        height: size.height,
+        strength: config.refineStrength,
+        steps: config.refineSteps,
+        seed: image.seed,
+        onProgress: (progress) => emit('refining', progress.step, progress.totalSteps),
+      });
+      if (!existsSync(refinedPath)) {
+        throw new ExternalServiceError('flux', 'The refine pass finished without writing an image');
+      }
+      rmSync(outputPath, { force: true });
+      renameSync(refinedPath, outputPath);
+    }
+
+    fluxRepository.setUpscaled(id, outputName, model, refine);
+    lastError = null;
+    return getImage(id);
+  } catch (error) {
+    lastError = (error as Error).message;
+    throw error;
+  } finally {
+    running = false;
+    publishStatus();
+  }
+}
+
+export interface EditParams {
+  /** What to change, written as an instruction: "make the armor golden". */
+  prompt: string;
+  /** Gallery image to edit; alternatively pass the bytes in `imageData`. */
+  imageId?: number;
+  /** An upload or a Discord attachment, in any format ffmpeg reads. */
+  imageData?: Buffer;
+  count?: number;
+  steps?: number;
+  seed?: number;
+  requestedBy?: string;
+}
+
+/**
+ * Rewrites an existing picture from a written instruction.
+ *
+ * The source is passed as a reference image rather than as a noised starting
+ * point, which is what keeps the parts of the picture the instruction says
+ * nothing about: the same face, the same tree, different armour.
+ */
+export async function editImage(params: EditParams): Promise<FluxGenerationResult> {
+  assertReady();
+  if (running) {
+    throw new ConflictError('An image is already being generated. Wait for it to finish.');
+  }
+  if (!params.imageId && !params.imageData) {
+    throw new AppError('flux_no_source', 'Provide an image to edit', 400);
+  }
+
+  const config = getFluxConfig();
+  const count = Math.min(Math.max(params.count ?? 1, MIN_FLUX_BATCH), MAX_FLUX_BATCH);
+  const steps = params.steps ?? config.steps;
+  const baseSeed = params.seed !== undefined && params.seed >= 0 ? params.seed : randomSeed();
+  const batchId = randomUUID().replace(/-/g, '').slice(0, 12);
+  const requestedBy = params.requestedBy ?? 'dashboard';
+
+  ensureFluxDirectories();
+
+  // An upload becomes a gallery entry of its own, so a chain of edits can keep
+  // referring back to it and the retention job cleans it up like anything else.
+  let source: FluxImage;
+  if (params.imageData) {
+    const prepared = await prepareInputImage(params.imageData);
+    const fileName = `${batchId}_source.png`;
+    writeFileSync(imagePath(fileName), prepared.png);
+    source = fluxRepository.create({
+      batchId,
+      indexInBatch: 0,
+      prompt: 'Uploaded for editing',
+      negativePrompt: '',
+      seed: 0,
+      width: prepared.width,
+      height: prepared.height,
+      steps: 0,
+      cfgScale: 0,
+      fileName,
+      durationMs: 0,
+      requestedBy,
+    });
+  } else {
+    source = getImage(params.imageId as number);
+  }
+
+  const sourcePath = imageFilePath(source);
+  if (!existsSync(sourcePath)) throw new NotFoundError('The image file is gone');
+  const { width, height } = fitToModel(source.width, source.height);
+
+  running = true;
+  queued = 0;
+  publishStatus();
+  const startedAt = Date.now();
+
+  try {
+    await runEdit(config, {
+      referencePaths: [sourcePath],
+      prompt: params.prompt,
+      width,
+      height,
+      steps,
+      seed: baseSeed,
+      batchCount: count,
+      outputPath: resolve(fluxImagesDir, `${batchId}_%d.png`),
       onProgress: (progress) => {
         bus.emit('flux:progress', {
-          batchId: image.batchId,
-          index: 1,
-          total: 1,
+          batchId,
+          index: Math.min(count, Math.floor(progress.step / Math.max(1, steps)) + 1),
+          total: count,
           step: progress.step,
           totalSteps: progress.totalSteps,
-          message: 'upscaling',
+          message: progress.message,
           at: Date.now(),
         });
       },
     });
 
-    if (!existsSync(imagePath(outputName))) {
-      throw new ExternalServiceError('flux', 'The upscaler finished without writing an image');
+    // The uploaded source shares the batch prefix, so it has to be excluded or
+    // it would be recorded a second time as a result.
+    const files = collectBatchFiles(batchId).filter((name) => name !== source.fileName);
+    if (files.length === 0) {
+      throw new ExternalServiceError('flux', 'The editor finished without writing an image');
     }
-    fluxRepository.setUpscaled(id, outputName);
+
+    const durationMs = Date.now() - startedAt;
+    const images = files.map((fileName, index) =>
+      fluxRepository.create({
+        batchId,
+        indexInBatch: index,
+        prompt: params.prompt,
+        negativePrompt: '',
+        seed: baseSeed + index,
+        width,
+        height,
+        steps,
+        cfgScale: config.cfgScale,
+        fileName,
+        durationMs,
+        requestedBy,
+        sourceImageId: source.id,
+      }),
+    );
+
     lastError = null;
-    return getImage(id);
+    log.info(
+      { batchId, count: images.length, seconds: Math.round(durationMs / 1000) },
+      'Edited an image',
+    );
+    return { batchId, images };
   } catch (error) {
     lastError = (error as Error).message;
     throw error;

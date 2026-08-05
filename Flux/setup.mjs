@@ -93,11 +93,29 @@ const MODELS = [
     approxMb: 340,
     note: 'VAE decoder',
   },
+  // Three upscalers, because the best one depends on the picture. They are all
+  // ESRGAN, the only family the binary can load, and each was checked against
+  // it: some popular weights (4x_foolhardy_Remacri) load without an error but
+  // return a blurred image, so they are deliberately not offered here.
   {
     name: 'RealESRGAN_x4plus.pth',
     url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth',
     approxMb: 64,
-    note: 'upscaler',
+    note: 'upscaler, most detail on photos',
+    optional: true,
+  },
+  {
+    name: '4x-UltraSharp.pth',
+    url: 'https://huggingface.co/uwg/upscaler/resolve/main/ESRGAN/4x-UltraSharp.pth',
+    approxMb: 64,
+    note: 'upscaler, clean edges',
+    optional: true,
+  },
+  {
+    name: 'RealESRGAN_x4plus_anime_6B.pth',
+    url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth',
+    approxMb: 18,
+    note: 'upscaler, anime and flat art, fastest',
     optional: true,
   },
 ];

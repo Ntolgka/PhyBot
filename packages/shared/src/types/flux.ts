@@ -7,6 +7,30 @@ export type FluxBackend = (typeof FLUX_BACKENDS)[number];
 export const MIN_FLUX_BATCH = 1;
 export const MAX_FLUX_BATCH = 4;
 
+/**
+ * FLUX picks a look for itself when the prompt does not name one, so the same
+ * wording can come back as a photograph on one seed and as digital art on the
+ * next. A style appends wording that pins it down.
+ */
+export const FLUX_STYLES = [
+  'none',
+  'photo',
+  'cinematic',
+  'illustration',
+  'anime',
+  'render3d',
+] as const;
+export type FluxStyle = (typeof FLUX_STYLES)[number];
+
+export const FLUX_STYLE_LABEL: Record<FluxStyle, string> = {
+  none: 'No style',
+  photo: 'Photo',
+  cinematic: 'Cinematic',
+  illustration: 'Illustration',
+  anime: 'Anime',
+  render3d: '3D render',
+};
+
 export interface FluxImage {
   id: number;
   /** Groups the images produced by one prompt. */
@@ -23,6 +47,12 @@ export interface FluxImage {
   fileName: string;
   /** Set once an upscaled copy exists. */
   upscaledFileName: string | null;
+  /** Which upscaler produced it; empty when there is no upscaled copy. */
+  upscaledModel: string;
+  /** True when a diffusion pass followed the upscaler to add real detail. */
+  upscaleRefined: boolean;
+  /** The image this one was edited from, when it came out of an edit. */
+  sourceImageId: number | null;
   /** Kept images survive the cleanup of old generations. */
   saved: boolean;
   durationMs: number;
@@ -42,6 +72,10 @@ export interface FluxConfig {
   llm: string;
   vae: string;
   upscaleModel: string;
+  /** Denoising strength of the pass that follows an upscale; 0 disables it. */
+  refineStrength: number;
+  /** Steps for that pass; it runs at the enlarged size so it is the slow part. */
+  refineSteps: number;
   steps: number;
   cfgScale: number;
   width: number;
@@ -67,6 +101,8 @@ export interface FluxStatus {
   backend: FluxBackend;
   /** Human readable list of what still has to be downloaded. */
   missing: string[];
+  /** Upscaler weights found in the models directory, for the settings picker. */
+  upscaleModels: string[];
   busy: boolean;
   queued: number;
   lastError: string | null;

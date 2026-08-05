@@ -20,6 +20,8 @@ export const DEFAULT_FLUX_CONFIG: FluxConfig = {
   llm: 'Qwen3-4B-Q4_K_M.gguf',
   vae: 'flux2-vae.safetensors',
   upscaleModel: 'RealESRGAN_x4plus.pth',
+  refineStrength: 0.3,
+  refineSteps: 6,
   steps: 4,
   cfgScale: 1,
   width: 1024,

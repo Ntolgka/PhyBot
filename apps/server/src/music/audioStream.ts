@@ -162,3 +162,26 @@ export function pcmToWav(pcm: Buffer, sampleRate = 48000, channels = 2): Buffer 
   header.writeUInt32LE(pcm.length, 40);
   return Buffer.concat([header, pcm]);
 }
+
+/**
+ * Converts 48 kHz stereo PCM to 16 kHz mono, the format speech recognition
+ * actually uses. Doing it here cuts the upload to a sixth and costs no extra
+ * process, which matters when every utterance in a busy channel is a request.
+ */
+export function downmixForSpeech(pcm48kStereo: Buffer): Buffer {
+  const frames = Math.floor(pcm48kStereo.length / 4);
+  const outFrames = Math.floor(frames / 3);
+  const out = Buffer.alloc(outFrames * 2);
+
+  for (let i = 0; i < outFrames; i += 1) {
+    // Average the three source frames that make up one output frame, and the
+    // two channels within each, which doubles as a cheap low pass filter.
+    let sum = 0;
+    for (let step = 0; step < 3; step += 1) {
+      const offset = (i * 3 + step) * 4;
+      sum += pcm48kStereo.readInt16LE(offset) + pcm48kStereo.readInt16LE(offset + 2);
+    }
+    out.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(sum / 6))), i * 2);
+  }
+  return out;
+}
