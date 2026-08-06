@@ -1,6 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import { extractYouTubeId } from './resolver.js';
+import { extractYouTubeId, isPlayableEntry } from './resolver.js';
 import { parseSpotifyUrl } from './spotify.js';
+
+describe('isPlayableEntry', () => {
+  it('accepts a normal video result', () => {
+    expect(
+      isPlayableEntry({
+        ie_key: 'Youtube',
+        duration: 117,
+        title: 'Wegh - Halef Selef',
+        url: 'https://www.youtube.com/watch?v=Vxm666Lk1ms',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects the artist channel that a name search returns first', () => {
+    // This one was queued as a track and made yt-dlp enumerate the whole
+    // channel until it timed out.
+    expect(
+      isPlayableEntry({
+        ie_key: 'YoutubeTab',
+        title: 'Wegh',
+        url: 'https://www.youtube.com/channel/UCx_EXk9I29_iIT0YZVAlpMA',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects channel URLs in every form YouTube uses', () => {
+    for (const url of [
+      'https://www.youtube.com/@wegh',
+      'https://www.youtube.com/c/wegh',
+      'https://www.youtube.com/user/wegh',
+      'https://www.youtube.com/playlist?list=PL123',
+    ]) {
+      expect(isPlayableEntry({ ie_key: 'Youtube', url })).toBe(false);
+    }
+  });
+
+  it('rejects SoundCloud sets and profile listings', () => {
+    expect(
+      isPlayableEntry({ ie_key: 'Soundcloud', url: 'https://soundcloud.com/artist/sets/album' }),
+    ).toBe(false);
+    expect(
+      isPlayableEntry({ ie_key: 'Soundcloud', url: 'https://soundcloud.com/artist/a-song' }),
+    ).toBe(true);
+  });
+
+  it('rejects anything typed as a playlist', () => {
+    expect(isPlayableEntry({ _type: 'playlist', url: 'https://example.com/x' })).toBe(false);
+  });
+});
 
 describe('extractYouTubeId', () => {
   it('reads the id from a watch link', () => {

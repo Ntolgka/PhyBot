@@ -39,7 +39,7 @@ export function registerMusicAnnouncements(): void {
   registerMusicPanel();
   registerVoiceStatus();
 
-  playerManager.on('error', async ({ guildId, message }) => {
+  playerManager.on('playbackError', async ({ guildId, message }) => {
     const channel = await resolveChannel(guildId);
     if (!channel) return;
     try {

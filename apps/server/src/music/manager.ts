@@ -13,7 +13,7 @@ export interface PlayerManagerEvents {
   trackStart: [{ guildId: string; track: Track }];
   trackEnd: [{ guildId: string; track: Track }];
   queueEnd: [{ guildId: string }];
-  error: [{ guildId: string; message: string }];
+  playbackError: [{ guildId: string; message: string }];
   created: [{ guildId: string }];
   destroyed: [{ guildId: string }];
 }
@@ -94,9 +94,9 @@ class PlayerManager extends EventEmitter<PlayerManagerEvents> {
     });
     player.on('trackEnd', (track) => this.emit('trackEnd', { guildId, track }));
     player.on('queueEnd', () => this.emit('queueEnd', { guildId }));
-    player.on('error', (message) => {
+    player.on('playbackError', (message) => {
       log.warn({ guildId, message }, 'Playback error');
-      this.emit('error', { guildId, message });
+      this.emit('playbackError', { guildId, message });
     });
     player.on('destroyed', () => {
       this.players.delete(guildId);

@@ -15,6 +15,13 @@ export interface ResolveOptions {
   limit?: number;
 }
 
+/**
+ * Extra search results fetched so that discarding channels and playlists still
+ * leaves something to play. Costs nothing: a flat search returns them all in
+ * one call.
+ */
+const SEARCH_OVERFETCH = 5;
+
 const YOUTUBE_HOSTS = [
   'youtube.com',
   'www.youtube.com',
@@ -61,9 +68,31 @@ function pickThumbnail(entry: YtDlpEntry, source: TrackSource): string | null {
   return null;
 }
 
+/**
+ * A search does not only return videos. Searching an artist name puts their
+ * channel first, and yt-dlp reports it with the same title as a song, so it
+ * used to be queued as if it were one. Playing it then made yt-dlp try to
+ * enumerate the whole channel until the timeout, once per attempt.
+ *
+ * Channels and playlists come back tagged as a tab or a playlist and carry no
+ * duration, which is what separates them from a real track.
+ */
+export function isPlayableEntry(entry: YtDlpEntry): boolean {
+  const extractor = (entry.extractor_key ?? entry.ie_key ?? entry.extractor ?? '').toLowerCase();
+  if (extractor.includes('tab') || extractor.includes('playlist')) return false;
+  if (entry._type === 'playlist') return false;
+
+  const url = entry.webpage_url ?? entry.original_url ?? entry.url ?? '';
+  if (/youtube\.com\/(channel|c|user|@|playlist)/i.test(url)) return false;
+  if (/soundcloud\.com\/[^/]+\/(sets|tracks|likes)(\/|$)/i.test(url)) return false;
+
+  return true;
+}
+
 function entryToTrack(entry: YtDlpEntry, options: ResolveOptions): Track | null {
   const url = entry.webpage_url ?? entry.original_url ?? entry.url;
   if (!url) return null;
+  if (!isPlayableEntry(entry)) return null;
   const source = sourceFromEntry(entry, url);
   const title = entry.track ?? entry.title ?? entry.fulltitle ?? 'Unknown title';
   // Private or deleted playlist items still appear in flat listings.
@@ -112,12 +141,17 @@ export async function resolveQuery(
   // Plain text: "sc:" switches the search to SoundCloud.
   const soundcloudSearch = /^sc:\s*/i.test(trimmed);
   const searchText = trimmed.replace(/^sc:\s*/i, '');
-  const entries = await searchEntries(searchText, 1, soundcloudSearch ? 'scsearch' : 'ytsearch');
-  const first = entries[0];
-  if (!first) {
+  // Asking for several and taking the first playable one, because the top hit
+  // for an artist name is usually their channel rather than a song.
+  const entries = await searchEntries(
+    searchText,
+    SEARCH_OVERFETCH,
+    soundcloudSearch ? 'scsearch' : 'ytsearch',
+  );
+  if (entries.length === 0) {
     throw new AppError('no_results', `No results for "${searchText}"`, 404);
   }
-  const track = entryToTrack(first, options);
+  const track = entries.map((entry) => entryToTrack(entry, options)).find(Boolean);
   if (!track) throw new AppError('no_results', `No playable result for "${searchText}"`, 404);
   return { ...emptyResult(), tracks: [track] };
 }
@@ -220,8 +254,15 @@ export async function searchTracks(query: string, limit = 8): Promise<SearchResu
   const soundcloud = /^sc:\s*/i.test(query);
   const text = query.replace(/^sc:\s*/i, '').trim();
   if (!text) return [];
-  const entries = await searchEntries(text, limit, soundcloud ? 'scsearch' : 'ytsearch');
+  // Over-fetch so dropping channels does not leave the list short.
+  const entries = await searchEntries(
+    text,
+    limit + SEARCH_OVERFETCH,
+    soundcloud ? 'scsearch' : 'ytsearch',
+  );
   return entries
+    .filter(isPlayableEntry)
+    .slice(0, limit)
     .map((entry) => {
       const url = entry.webpage_url ?? entry.url;
       if (!url) return null;
@@ -246,8 +287,9 @@ export async function searchTracks(query: string, limit = 8): Promise<SearchResu
 export async function resolvePlayableUrl(track: Track): Promise<string> {
   if (track.source !== 'spotify') return track.url;
   const query = track.searchQuery ?? `${track.author} ${track.title}`.trim();
-  const entries = await searchEntries(query, 1, 'ytsearch');
-  const match = entries[0]?.webpage_url ?? entries[0]?.url;
+  const entries = await searchEntries(query, SEARCH_OVERFETCH, 'ytsearch');
+  const playable = entries.find(isPlayableEntry);
+  const match = playable?.webpage_url ?? playable?.url;
   if (!match) {
     log.warn({ query }, 'No YouTube match for Spotify track');
     throw new AppError('no_match', `Could not find a playable version of "${track.title}"`, 404);

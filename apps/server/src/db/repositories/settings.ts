@@ -28,6 +28,7 @@ interface SettingsRow {
   events_channel_id: string | null;
   event_reminder_minutes: number;
   ai_enabled: number;
+  voice_announce_enabled: number;
   ai_voice_enabled: number;
   ai_text_channel_id: string | null;
   updated_at: number;
@@ -58,6 +59,7 @@ const COLUMNS: Record<keyof GuildSettingsUpdate, keyof SettingsRow> = {
   eventsChannelId: 'events_channel_id',
   eventReminderMinutes: 'event_reminder_minutes',
   aiEnabled: 'ai_enabled',
+  voiceAnnounceEnabled: 'voice_announce_enabled',
   aiVoiceEnabled: 'ai_voice_enabled',
   aiTextChannelId: 'ai_text_channel_id',
 };
@@ -98,6 +100,7 @@ function toSettings(row: SettingsRow): GuildSettings {
     eventsChannelId: row.events_channel_id,
     eventReminderMinutes: row.event_reminder_minutes,
     aiEnabled: row.ai_enabled === 1,
+    voiceAnnounceEnabled: row.voice_announce_enabled === 1,
     aiVoiceEnabled: row.ai_voice_enabled === 1,
     aiTextChannelId: row.ai_text_channel_id,
     updatedAt: row.updated_at,

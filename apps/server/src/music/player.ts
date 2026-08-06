@@ -29,7 +29,12 @@ export interface GuildPlayerEvents {
   trackStart: [Track];
   trackEnd: [Track];
   queueEnd: [];
-  error: [string];
+  /**
+   * Deliberately not called 'error'. Node treats an 'error' event with no
+   * listener as a fatal unhandled error, so a failed track used to crash the
+   * command that queued it instead of skipping to the next one.
+   */
+  playbackError: [string];
   update: [];
   destroyed: [];
 }
@@ -282,7 +287,7 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
       }
 
       this.lastError = message;
-      this.emit('error', `${track.title}: ${message}`);
+      this.emit('playbackError', `${track.title}: ${message}`);
       await this.advance({ force: true });
     }
   }

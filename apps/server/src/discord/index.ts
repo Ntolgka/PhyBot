@@ -5,7 +5,13 @@ import { bus } from '../core/bus.js';
 import { config } from '../core/config.js';
 import { createLogger } from '../core/logger.js';
 import { toErrorMessage } from '../core/errors.js';
-import { handleMemberJoin, handleMemberLeave, startFeatureSchedulers } from '../features/index.js';
+import {
+  handleMemberJoin,
+  handleMemberLeave,
+  handleVoiceStateUpdate,
+  resetVoiceAnnouncements,
+  startFeatureSchedulers,
+} from '../features/index.js';
 import { playerManager } from '../music/manager.js';
 import { registerMusicAnnouncements } from './announcer.js';
 import { createClient, getStatus, setLastError, startBot, startStatusBroadcast } from './client.js';
@@ -85,11 +91,15 @@ function registerEvents(client: Client): void {
   });
 
   client.on(Events.VoiceStateUpdate, (oldState, newState) => {
-    // The bot was moved or disconnected by a moderator.
-    if (oldState.id !== client.user?.id) return;
-    if (oldState.channelId && !newState.channelId) {
-      playerManager.destroy(oldState.guild.id);
+    if (oldState.id === client.user?.id) {
+      // The bot was moved or disconnected by a moderator.
+      if (oldState.channelId && !newState.channelId) {
+        resetVoiceAnnouncements(oldState.guild.id);
+        playerManager.destroy(oldState.guild.id);
+      }
+      return;
     }
+    handleVoiceStateUpdate(oldState, newState);
   });
 
   client.on(Events.Error, (error) => {

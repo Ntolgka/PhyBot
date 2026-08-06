@@ -58,12 +58,13 @@ class Semaphore {
 
 const semaphore = new Semaphore(3);
 
+// --no-call-home used to be here. It was deprecated in 2026 and now prints a
+// three line notice on every single call, which then masked real errors.
 const BASE_ARGS = [
   '--no-color',
   '--no-progress',
   '--ignore-config',
   '--no-warnings',
-  '--no-call-home',
   '--socket-timeout',
   '15',
 ];
@@ -74,6 +75,37 @@ function withGlobalArgs(args: string[]): string[] {
     result.unshift('--cookies', config.music.cookiesFile);
   }
   return result;
+}
+
+/** Lines yt-dlp prints that describe its own configuration, not the failure. */
+function isNoise(line: string): boolean {
+  return /^(WARNING|Deprecated Feature|Please remove them|See\s+https?:)/i.test(line.trim());
+}
+
+/**
+ * Explains why a call failed.
+ *
+ * yt-dlp writes deprecation notices and warnings to stderr on runs that
+ * otherwise succeed, and taking the last lines meant a timeout was once
+ * reported as "Please remove them from your command/configuration" - which
+ * describes neither the cause nor anything the user can act on. Real errors are
+ * preferred, and a kill by the timeout is named as such.
+ */
+function describeFailure(
+  error: Error & { killed?: boolean; code?: number | string; signal?: string },
+  stderr: string,
+  timeoutMs: number,
+): string {
+  const lines = stderr.split('\n').filter((line) => line.trim() && !isNoise(line));
+  const reported = lines.filter((line) => /^ERROR:/i.test(line.trim()));
+  const detail = (reported.length > 0 ? reported : lines).slice(-2).join(' ').trim();
+
+  // execFile reports a timeout as a kill, with nothing useful in stderr.
+  if (error.killed) {
+    const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+    return detail ? `Timed out after ${seconds}s: ${detail}` : `Timed out after ${seconds}s`;
+  }
+  return detail || error.message || 'Command failed';
 }
 
 export async function runYtDlp(args: string[], timeoutMs = 45_000): Promise<string> {
@@ -92,12 +124,7 @@ export async function runYtDlp(args: string[], timeoutMs = 45_000): Promise<stri
         { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
         (error, stdout, stderr) => {
           if (error) {
-            const detail = (stderr || error.message)
-              .split('\n')
-              .filter(Boolean)
-              .slice(-2)
-              .join(' ');
-            reject(new ExternalServiceError('yt-dlp', detail || 'Command failed'));
+            reject(new ExternalServiceError('yt-dlp', describeFailure(error, stderr, timeoutMs)));
             return;
           }
           resolve(stdout);

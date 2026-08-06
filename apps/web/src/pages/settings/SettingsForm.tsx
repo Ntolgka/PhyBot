@@ -327,6 +327,12 @@ export function SettingsForm({
             label="Enable AI voice assistant"
             disabled={!form.aiEnabled}
           />
+          <Switch
+            checked={form.voiceAnnounceEnabled}
+            onChange={(value) => set('voiceAnnounceEnabled', value)}
+            label="Announce voice arrivals"
+            description="Joins the channel and says who came in or left, in the assistant's voice."
+          />
           <ChannelSelect
             label="AI text channel"
             channels={channels}

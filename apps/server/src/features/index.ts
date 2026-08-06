@@ -20,6 +20,7 @@ import {
   publishPanel,
   updatePanel,
 } from './rolePanels/service.js';
+import { handleVoiceStateUpdate, resetVoiceAnnouncements } from './voiceAnnounce/service.js';
 import {
   announceOffer,
   getFreeGamesStatus,
@@ -49,6 +50,8 @@ export {
   getFreeGamesStatus,
   refreshFreeGames,
   announceOffer,
+  handleVoiceStateUpdate,
+  resetVoiceAnnouncements,
 };
 
 /** Starts every background scheduler owned by the community features. Safe to call once at startup. */

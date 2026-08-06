@@ -65,6 +65,9 @@ changing the bot's own name, avatar, banner, description and presence.
   Microsoft neural voices, or point a voice at a local speech program to use a
   custom or cloned voice
 - Pick the voice per message, in the dashboard or with /say
+- Optionally announces arrivals: the bot joins whichever voice channel someone
+  entered and says who came in, and who left, in the assistant's voice. It stays
+  put while music is playing so a song is never cut off
 
 ### Community
 

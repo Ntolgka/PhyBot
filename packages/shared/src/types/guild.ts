@@ -73,6 +73,8 @@ export interface GuildSettings {
   eventReminderMinutes: number;
   aiEnabled: boolean;
   aiVoiceEnabled: boolean;
+  /** Speak a line in the voice channel when someone joins or leaves it. */
+  voiceAnnounceEnabled: boolean;
   aiTextChannelId: string | null;
   updatedAt: number;
 }

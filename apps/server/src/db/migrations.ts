@@ -230,4 +230,11 @@ export const migrations: Migration[] = [
       ALTER TABLE flux_images ADD COLUMN source_image_id INTEGER;
     `,
   },
+  {
+    version: 7,
+    name: 'spoken announcements when people come and go from voice',
+    sql: `
+      ALTER TABLE guild_settings ADD COLUMN voice_announce_enabled INTEGER NOT NULL DEFAULT 1;
+    `,
+  },
 ];

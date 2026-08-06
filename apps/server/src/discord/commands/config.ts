@@ -206,7 +206,7 @@ const configCommand: BotCommand = {
             },
             {
               name: 'Assistant',
-              value: `Text: ${settings.aiEnabled ? 'on' : 'off'} • Voice: ${settings.aiVoiceEnabled ? 'on' : 'off'}`,
+              value: `Text: ${settings.aiEnabled ? 'on' : 'off'} • Voice: ${settings.aiVoiceEnabled ? 'on' : 'off'} • Arrivals: ${settings.voiceAnnounceEnabled ? 'on' : 'off'}`,
             },
           )
           .setFooter({ text: 'Full configuration is available in the web dashboard.' });

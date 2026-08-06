@@ -46,6 +46,7 @@ export const guildSettingsUpdateSchema = z
     eventReminderMinutes: z.number().int().min(0).max(10080),
     aiEnabled: z.boolean(),
     aiVoiceEnabled: z.boolean(),
+    voiceAnnounceEnabled: z.boolean(),
     aiTextChannelId: nullableSnowflake,
   })
   .partial();
