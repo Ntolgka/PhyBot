@@ -154,6 +154,42 @@ npm install
 `npm install` also creates a `.env` file from `.env.example` and downloads the
 ffmpeg and yt-dlp binaries into `node_modules`.
 
+### Raspberry Pi
+
+A Pi 4 or 5 running the 64-bit Raspberry Pi OS handles everything except image
+generation. Check the architecture first; `aarch64` is what you want.
+
+```bash
+uname -m
+```
+
+Raspberry Pi OS ships a version of Node that is too old, so install a current
+one and the build tools for the native audio encoder:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt install -y nodejs build-essential python3
+git clone <your-repository-url> PhyBot
+cd PhyBot
+npm install
+npm run doctor
+```
+
+`build-essential` matters more than it looks: there is no prebuilt ARM binary
+for the native Opus encoder, so without a compiler it falls back to a pure
+JavaScript one that struggles to keep up on a Pi. `python3` is needed because
+the Linux yt-dlp is a Python program. `npm run doctor` confirms all of it before
+you start the bot.
+
+Two things to expect on a Pi:
+
+- **Skip `npm run flux:setup`.** Local image generation needs about 5 GB of
+  model weights and a GPU; `/imagine` and `/edit` will report that the engine is
+  not installed and everything else carries on working.
+- To reach the dashboard from another machine, set `WEB_HOST=0.0.0.0` in `.env`.
+  The bot refuses to listen on anything but localhost until `DASHBOARD_PASSWORD`
+  is set, which is deliberate.
+
 ## Discord application setup
 
 1. Open <https://discord.com/developers/applications> and create an application.
@@ -258,6 +294,7 @@ Other scripts:
 
 ```bash
 npm test
+npm run doctor
 npm run typecheck
 npm run deploy-commands --workspace @phybot/server
 ```
@@ -330,6 +367,30 @@ PhyBot
 **The bot does not start and the log mentions disallowed intents.**
 Enable Server Members Intent and Message Content Intent on the Bot page of your
 Discord application, then restart.
+
+**Tracks start and end again within a second.**
+Something in the audio pipeline cannot run. Check every stage at once:
+
+```bash
+npm run doctor
+```
+
+It tests ffmpeg, yt-dlp, the Opus encoder and the voice encryption library on
+the machine itself, and names the stage that fails. The most common answer on
+Linux is ffmpeg, which you can also check directly:
+
+```bash
+"$(node -e 'process.stdout.write(require("ffmpeg-static"))')" -version
+```
+
+If that fails, the usual cause is a musl based distribution such as Alpine,
+because the bundled build needs glibc. Install ffmpeg from the package manager
+and point `FFMPEG_PATH` in `.env` at it:
+
+```bash
+sudo apk add ffmpeg   # or apt install ffmpeg
+echo "FFMPEG_PATH=$(command -v ffmpeg)" >> .env
+```
 
 **Sign in says the password is not set.**
 `DASHBOARD_PASSWORD` in `.env` is still the placeholder. Set a real password and

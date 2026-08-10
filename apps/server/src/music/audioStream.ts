@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { Readable } from 'node:stream';
+import { existsSync } from 'node:fs';
 import ffmpegStatic from 'ffmpeg-static';
 import { ExternalServiceError } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
@@ -8,12 +9,28 @@ const log = createLogger('audio');
 
 // ffmpeg-static exports the binary path directly; its typings describe it as a
 // module namespace, so the value is narrowed here once.
-const ffmpegPath = ffmpegStatic as unknown as string | null;
+const bundledFfmpeg = ffmpegStatic as unknown as string | null;
+
+/**
+ * The bundled build is linked against glibc, so it cannot run at all on a musl
+ * distribution such as Alpine. FFMPEG_PATH lets those machines use the system
+ * package instead, matching how YT_DLP_PATH already works.
+ */
+function resolveFfmpeg(): string | null {
+  const override = process.env.FFMPEG_PATH;
+  if (override && existsSync(override)) return override;
+  if (override) log.warn({ path: override }, 'FFMPEG_PATH does not exist, using the bundled build');
+  return bundledFfmpeg;
+}
+
+const ffmpegPath = resolveFfmpeg();
 
 export interface FfmpegStream {
   process: ChildProcess;
   output: Readable;
   destroy: () => void;
+  /** Whatever ffmpeg last complained about, for reporting a stream that died. */
+  lastError: () => string;
 }
 
 /** Serialises HTTP headers the way ffmpeg expects them on the command line. */
@@ -83,23 +100,29 @@ export function createPcmStream(options: StreamOptions): FfmpegStream {
   child.stderr.on('data', (chunk: Buffer) => {
     stderrTail = `${stderrTail}${chunk.toString()}`.slice(-500);
   });
+  let killed = false;
   child.on('error', (error) => {
+    stderrTail = `${stderrTail}\n${error.message}`.slice(-500);
     log.error({ err: error }, 'ffmpeg failed to start');
   });
   child.on('close', (code) => {
-    if (code !== 0 && code !== null && stderrTail.trim()) {
-      log.debug({ code, stderr: stderrTail.trim() }, 'ffmpeg exited with output');
+    // Warn, not debug: a decoder that dies mid-track ends the song after a
+    // fraction of a second, and at the default log level this used to leave no
+    // trace at all - the track simply appeared to finish.
+    if (!killed && code !== 0 && code !== null) {
+      log.warn({ code, stderr: stderrTail.trim() || '(no output)' }, 'ffmpeg exited early');
     }
   });
 
   const destroy = () => {
     if (child.exitCode === null && !child.killed) {
+      killed = true;
       child.kill('SIGKILL');
     }
     child.stdout.destroy();
   };
 
-  return { process: child, output: child.stdout, destroy };
+  return { process: child, output: child.stdout, destroy, lastError: () => stderrTail.trim() };
 }
 
 /** Renders a short audio buffer (used by text-to-speech) into PCM. */

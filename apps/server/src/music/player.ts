@@ -27,6 +27,8 @@ const log = createLogger('player');
 
 /** Alternative uploads tried when the first match will not play. */
 const MAX_SOURCE_ATTEMPTS = 3;
+/** Below this, a track cannot be said to have played at all. */
+const MIN_PLAYED_MS = 1500;
 
 export interface GuildPlayerEvents {
   trackStart: [Track];
@@ -164,7 +166,21 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
       if (this.transitioning || this.destroyed) return;
       const finished = this.queue.current;
-      if (finished) this.emit('trackEnd', finished);
+      // A stream that dies on the first frame looks exactly like a track that
+      // finished, so the song used to vanish after a fraction of a second with
+      // nothing reported. Anything this short did not play.
+      const played = this.resource?.playbackDuration ?? 0;
+      if (finished && played < MIN_PLAYED_MS && !this.endedNormally(finished)) {
+        const detail = this.stream?.lastError() || 'the audio stream ended immediately';
+        log.warn(
+          { guildId: this.guild.id, track: finished.title, playedMs: played, detail },
+          'Track ended before it started',
+        );
+        this.lastError = detail;
+        this.emit('playbackError', `${finished.title}: ${detail}`);
+      } else if (finished) {
+        this.emit('trackEnd', finished);
+      }
       void this.advance();
     });
     this.audioPlayer.on('error', (error) => {
@@ -173,6 +189,16 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
       if (this.transitioning || this.destroyed) return;
       void this.advance();
     });
+  }
+
+  /**
+   * True when a track really was meant to be this short: a clip of a second or
+   * two, or one the listener seeked to the very end of.
+   */
+  private endedNormally(track: Track): boolean {
+    if (track.isLive) return true;
+    if (track.duration > 0 && track.duration <= MIN_PLAYED_MS / 1000) return true;
+    return track.duration > 0 && this.startOffset >= track.duration - 2;
   }
 
   private setStatus(status: PlayerStatus): void {

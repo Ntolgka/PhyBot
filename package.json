@@ -24,7 +24,8 @@
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "flux:setup": "node Flux/setup.mjs"
+    "flux:setup": "node Flux/setup.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "opusscript": "^0.0.8"
