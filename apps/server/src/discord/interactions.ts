@@ -4,19 +4,34 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Interaction,
+  type StringSelectMenuInteraction,
 } from 'discord.js';
 import { SEEK_STEP_SECONDS, type LoopMode } from '@phybot/shared';
 import { AppError, toErrorMessage } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
+import { historyRepository } from '../db/repositories/misc.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { handleEventInteraction, handleRolePanelInteraction } from '../features/index.js';
 import { playerManager } from '../music/manager.js';
+import { play } from '../music/service.js';
 import { suggestVoices } from './commands/assistant.js';
 import { commandRegistry } from './commands/index.js';
 import { handleFluxButton, handleFluxSelect } from './commands/imagine.js';
 import { executeSoundCommand, findSoundCommand } from './commands/soundboard.js';
 import { hasPermission, permissionMessage } from './commands/helpers.js';
-import { errorEmbed, musicControls, nowPlayingEmbed, queueEmbed, MUSIC_BUTTONS } from './embeds.js';
+import {
+  errorEmbed,
+  musicControls,
+  nowPlayingEmbed,
+  panelEmbed,
+  queueBrowser,
+  queueEmbed,
+  MUSIC_BUTTONS,
+  QUEUE_BROWSE_PREFIX,
+  QUEUE_PAGE_SIZE,
+  QUEUE_PICK_ID,
+} from './embeds.js';
+import { isPanelMessage } from './panel.js';
 import { findCustomCommand, renderCustomCommand } from './customCommands.js';
 import { respond } from './reply.js';
 
@@ -33,7 +48,8 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
     if (interaction.isStringSelectMenu()) {
-      await handleFluxSelect(interaction);
+      if (interaction.customId.startsWith('music:')) await handleQueuePick(interaction);
+      else await handleFluxSelect(interaction);
       return;
     }
     if (interaction.isAutocomplete()) {
@@ -136,12 +152,28 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   if (!customId.startsWith('music:')) return;
 
   if (!interaction.guild) return;
+  if (customId.startsWith(QUEUE_BROWSE_PREFIX)) {
+    await showQueuePage(interaction, Number(customId.slice(QUEUE_BROWSE_PREFIX.length)) || 0, true);
+    return;
+  }
   const player = playerManager.get(interaction.guild.id);
   if (!player) {
+    // Play again is the whole point of the message posted once playback ends,
+    // by which time the idle timeout has usually disconnected the player.
+    if (customId === MUSIC_BUTTONS.replay) {
+      await replayLastTrack(interaction);
+      return;
+    }
     await interaction.reply({
       embeds: [errorEmbed('Nothing is playing right now.')],
       flags: MessageFlags.Ephemeral,
     });
+    return;
+  }
+
+  // Looking at the queue changes nothing, so it does not need the DJ role.
+  if (customId === MUSIC_BUTTONS.queue) {
+    await showQueuePage(interaction, 0, false);
     return;
   }
 
@@ -190,21 +222,119 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     case MUSIC_BUTTONS.stop:
       player.stop(true);
       break;
-    case MUSIC_BUTTONS.queue: {
-      await interaction.followUp({
-        embeds: [queueEmbed(player.snapshot())],
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
     default:
       return;
   }
 
+  // The same buttons sit on the live panel and on a /nowplaying reply, which
+  // are different cards. Redrawing with the wrong one turned the panel into a
+  // now-playing card until the next refresh put it back.
+  const snapshot = player.snapshot();
+  const onPanel = isPanelMessage(interaction.guild.id, interaction.message.id);
+  await interaction.editReply({
+    embeds: [onPanel ? panelEmbed(snapshot) : nowPlayingEmbed(snapshot)],
+    components: musicControls(snapshot),
+  });
+}
+
+/**
+ * Shows one page of the queue, with every track on it numbered and pickable.
+ * Ephemeral, so browsing a 300 track playlist costs the channel nothing.
+ */
+async function showQueuePage(
+  interaction: ButtonInteraction | StringSelectMenuInteraction,
+  page: number,
+  replaceExisting: boolean,
+): Promise<void> {
+  if (!interaction.guild) return;
+  const player = playerManager.get(interaction.guild.id);
+  if (!player) {
+    await interaction.reply({
+      embeds: [errorEmbed('Nothing is playing right now.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const snapshot = player.snapshot();
+  const payload = {
+    embeds: [queueEmbed(snapshot, page, QUEUE_PAGE_SIZE)],
+    components: queueBrowser(snapshot, page),
+  };
+
+  // Paging edits the browser in place; opening it posts a new ephemeral one.
+  if (replaceExisting) await interaction.update(payload);
+  else await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+}
+
+/** Plays the numbers picked in the queue browser, in the order they were ticked. */
+async function handleQueuePick(interaction: StringSelectMenuInteraction): Promise<void> {
+  if (interaction.customId !== QUEUE_PICK_ID || !interaction.guild) return;
+
+  const player = playerManager.get(interaction.guild.id);
+  if (!player) {
+    await interaction.reply({
+      embeds: [errorEmbed('Nothing is playing right now.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const settings = settingsRepository.get(interaction.guild.id);
+  if (!hasPermission(member, settings, 'dj')) {
+    await interaction.reply({
+      embeds: [errorEmbed(permissionMessage('dj'), 'Not allowed')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  const picked = interaction.values.map(Number).filter(Number.isInteger);
+  const track = await player.playSelection(picked);
+  if (!track) return;
+
   const snapshot = player.snapshot();
   await interaction.editReply({
-    embeds: [nowPlayingEmbed(snapshot)],
-    components: musicControls(snapshot),
+    embeds: [queueEmbed(snapshot, 0, QUEUE_PAGE_SIZE)],
+    components: queueBrowser(snapshot, 0),
+  });
+}
+
+/**
+ * Restarts the last thing this server played, after the bot has already left
+ * the voice channel. The presser has to be in a voice channel themselves,
+ * because there is no longer a connection to reuse.
+ */
+async function replayLastTrack(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.guild) return;
+  const [last] = historyRepository.recent(interaction.guild.id, 1);
+  if (!last) {
+    await interaction.reply({
+      embeds: [errorEmbed('There is nothing to play again yet.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const voiceChannelId = member.voice.channelId;
+  if (!voiceChannelId) {
+    await interaction.reply({
+      embeds: [errorEmbed('Join a voice channel first.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  await play({
+    guildId: interaction.guild.id,
+    query: last.url,
+    requester: { id: member.id, name: member.displayName },
+    voiceChannelId,
+    textChannelId: interaction.channelId,
   });
 }
 

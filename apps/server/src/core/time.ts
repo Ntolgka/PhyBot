@@ -54,15 +54,6 @@ export function parseZonedDateTime(input: string, timeZone: string): number | nu
   return utc;
 }
 
-/** Formats an epoch timestamp for logs and embeds in the configured zone. */
-export function formatZoned(timestamp: number, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone,
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
-}
-
 /** Discord renders <t:seconds:F> in each viewer's own locale and timezone. */
 export function discordTimestamp(timestamp: number, style: 'F' | 'R' | 't' | 'd' = 'F'): string {
   return `<t:${Math.floor(timestamp / 1000)}:${style}>`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { discordTimestamp, formatZoned, parseZonedDateTime } from './time.js';
+import { discordTimestamp, parseZonedDateTime } from './time.js';
 
 describe('parseZonedDateTime', () => {
   it('reads a local time in a fixed offset zone', () => {
@@ -22,13 +22,6 @@ describe('parseZonedDateTime', () => {
   it('rejects text that is not a date', () => {
     expect(parseZonedDateTime('tomorrow evening', 'UTC')).toBeNull();
     expect(parseZonedDateTime('14/09/2026 21:00', 'UTC')).toBeNull();
-  });
-});
-
-describe('formatZoned', () => {
-  it('formats in the requested zone', () => {
-    const formatted = formatZoned(Date.UTC(2026, 8, 14, 18, 0), 'Europe/Istanbul');
-    expect(formatted).toContain('21:00');
   });
 });
 

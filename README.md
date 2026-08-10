@@ -25,6 +25,9 @@ changing the bot's own name, avatar, banner, description and presence.
   bar, the whole queue and working control buttons. Each new track posts a fresh
   panel at the bottom and clears the previous one, so the queue is always in
   view; playback changes update that message in place
+- A Queue button opens the whole playlist, paged and numbered by position. Any
+  of those numbers can be picked to play it straight away without losing the
+  rest of the queue, and picking several plays them in the order you tick them
 - The voice channel status shows the track that is playing, with a music note
 - Autoplay keeps similar music going when the queue runs out, seeded from the
   track that just finished
@@ -69,6 +72,11 @@ changing the bot's own name, avatar, banner, description and presence.
   entered and says who came in, and who left, in the assistant's voice. It stays
   put while music is playing so a song is never cut off
 
+### Fun
+
+- `/turksigara` posts a random picture from turksigara.net, the way the site's
+  own "rastgele" button works
+
 ### Community
 
 - Automatic role for new members (with a separate role for bots)
@@ -105,6 +113,7 @@ changing the bot's own name, avatar, banner, description and presence.
 - Server settings, events, role panels, custom commands, free game offers and
   assistant settings
 - Bot profile editor (username, description, tags, avatar, banner, presence)
+- Send a message as the bot into any channel it can post in
 - Live log console
 
 ## Requirements
@@ -267,14 +276,17 @@ them inside Discord.
 | `/queue [page]`, `/remove`, `/move`, `/jump`, `/clear`, `/dedupe`             | Manage the queue                                           |
 | `/shuffle [random-order]`                                                     | Mix the queue once, or keep picking at random              |
 | `/panel`                                                                      | Post the live music panel with the queue and controls here |
+| `/source`                                                                     | Show the link of the current track                         |
 | `/loop <off\|track\|queue>`, `/autoplay`, `/volume`                           | Playback modes                                             |
 | `/join`, `/leave`                                                             | Move the bot in and out of voice                           |
 | `/event create\|list\|publish\|cancel`                                        | Events with RSVP buttons                                   |
 | `/sound <name>`, `/sounds`                                                    | Play a soundboard clip, or list them                       |
-| `/imagine <prompt> [count]`                                                   | Generate one to four images locally                        |
+| `/imagine <prompt> [style] [count]`                                           | Generate one to four images locally                        |
+| `/edit <image> <change>`                                                      | Rewrite an image from a written instruction                |
 | `/freegames [refresh]`                                                        | Show games that are free right now                         |
 | `/config view\|autorole\|welcome\|goodbye\|freegames\|music-channel\|dj-role` | Server configuration                                       |
 | `/ask <message>`, `/listen <on\|off>`, `/say <text> [voice]`                  | Assistant                                                  |
+| `/turksigara`                                                                 | Post a random picture from turksigara.net                  |
 | `/help`, `/ping`, `/stats`, `/invite`                                         | Utility                                                    |
 | `/restart`                                                                    | Restart the bot after an update (owner only)               |
 
@@ -297,12 +309,15 @@ PhyBot
 │   │       ├── core        Config, logging, event bus, errors, time helpers
 │   │       ├── db          SQLite connection, migrations, repositories
 │   │       ├── discord     Client, slash commands, interactions, embeds
-│   │       ├── features    Auto-role, events, role panels, free games
-│   │       └── music       Resolvers, queue, player, streaming
+│   │       ├── features    Auto-role, events, role panels, free games, extras
+│   │       ├── flux        Local image generation, editing and upscaling
+│   │       ├── music       Resolvers, queue, player, streaming
+│   │       └── soundboard  Clip storage and playback
 │   └── web             React dashboard
 ├── packages
 │   └── shared          Types, validation schemas and helpers used by both
 ├── scripts             Install helpers
+├── Flux                Image model runtime, weights and generated images
 └── data                SQLite database and generated keys (not in git)
 ```
 

@@ -11,6 +11,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { EventsPage } from './pages/EventsPage';
 import { FreeGamesPage } from './pages/FreeGamesPage';
 import { AiPage } from './pages/AiPage';
+import { MessagePage } from './pages/MessagePage';
 import { SpeakPage } from './pages/SpeakPage';
 import { CommandsPage } from './pages/CommandsPage';
 import { RolePanelsPage } from './pages/RolePanelsPage';
@@ -32,6 +33,7 @@ export function App(): ReactNode {
           <Route path="/free-games" element={<FreeGamesPage />} />
           <Route path="/ai" element={<AiPage />} />
           <Route path="/speak" element={<SpeakPage />} />
+          <Route path="/message" element={<MessagePage />} />
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/role-panels" element={<RolePanelsPage />} />
           <Route path="/profile" element={<BotProfilePage />} />

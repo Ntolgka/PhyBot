@@ -8,7 +8,8 @@ import type {
 } from 'discord.js';
 import type { GuildSettings } from '@phybot/shared';
 
-export type CommandCategory = 'Music' | 'Queue' | 'Community' | 'Configuration' | 'AI' | 'Utility';
+export type CommandCategory =
+  'Music' | 'Queue' | 'Community' | 'Configuration' | 'AI' | 'Fun' | 'Utility';
 
 /** Who may run a command, checked before execute(). */
 export type CommandPermission = 'everyone' | 'dj' | 'manage' | 'owner';

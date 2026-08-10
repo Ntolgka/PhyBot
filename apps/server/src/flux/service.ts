@@ -174,7 +174,7 @@ export async function generateImages(params: GenerateParams): Promise<FluxGenera
 
   /**
    * A negative prompt only means something when classifier free guidance is
-   * active. FLUX.1-schnell is guidance distilled and runs at a scale of 1,
+   * active. FLUX.2-klein is guidance distilled and runs at a scale of 1,
    * where the unconditional branch is never computed, so the text would be
    * silently ignored. It is dropped here and reported instead of pretending.
    */

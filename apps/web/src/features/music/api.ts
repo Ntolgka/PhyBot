@@ -115,13 +115,6 @@ export function useResumeMutation(guildId: string) {
   }));
 }
 
-export function useToggleMutation(guildId: string) {
-  return usePlayerMutation<void>(guildId, () => ({
-    path: `/guilds/${guildId}/player/toggle`,
-    method: 'POST',
-  }));
-}
-
 export function useSkipMutation(guildId: string) {
   return usePlayerMutation<SkipParams>(guildId, () => ({
     path: `/guilds/${guildId}/player/skip`,

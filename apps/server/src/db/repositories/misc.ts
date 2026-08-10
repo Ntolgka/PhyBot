@@ -50,17 +50,6 @@ export const sessionsRepository = {
   },
 };
 
-/** Constant-time comparison so password checks do not leak timing information. */
-export function safeCompare(a: string, b: string): boolean {
-  const bufferA = Buffer.from(a);
-  const bufferB = Buffer.from(b);
-  if (bufferA.length !== bufferB.length) {
-    timingSafeEqual(bufferA, bufferA);
-    return false;
-  }
-  return timingSafeEqual(bufferA, bufferB);
-}
-
 export interface FreeGamePostRecord {
   offerId: string;
   guildId: string;

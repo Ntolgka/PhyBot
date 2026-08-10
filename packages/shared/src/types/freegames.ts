@@ -19,14 +19,6 @@ export interface FreeGameOffer {
   fetchedAt: number;
 }
 
-export interface FreeGamePost {
-  offerId: string;
-  guildId: string;
-  channelId: string;
-  messageId: string;
-  postedAt: number;
-}
-
 export interface FreeGamesStatus {
   enabled: boolean;
   lastCheckedAt: number | null;

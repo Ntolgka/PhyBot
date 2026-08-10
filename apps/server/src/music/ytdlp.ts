@@ -284,13 +284,3 @@ export async function fetchPlaybackInfo(url: string): Promise<PlaybackInfo> {
   }
   return info;
 }
-
-export async function ytDlpVersion(): Promise<string | null> {
-  try {
-    const stdout = await runYtDlp(['--version'], 10_000);
-    return stdout.trim();
-  } catch (error) {
-    log.warn({ err: error }, 'Could not read the yt-dlp version');
-    return null;
-  }
-}

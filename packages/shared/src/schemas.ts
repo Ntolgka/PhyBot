@@ -115,11 +115,6 @@ export const eventInputSchema = z.object({
 
 export const eventUpdateSchema = eventInputSchema.omit({ guildId: true }).partial();
 
-export const rsvpSchema = z.object({
-  userId: snowflake,
-  status: z.enum(RSVP_STATUSES),
-});
-
 export const customCommandInputSchema = z.object({
   guildId: snowflake,
   name: z
@@ -186,6 +181,13 @@ export const soundUpdateSchema = soundInputSchema
 export const soundPlaySchema = z.object({
   guildId: snowflake,
   voiceChannelId: snowflake.optional(),
+});
+
+export const sendMessageSchema = z.object({
+  guildId: snowflake,
+  channelId: snowflake,
+  /** Discord's own limit on a plain message. */
+  content: z.string().min(1, 'Write something to send').max(2000),
 });
 
 export const fluxGenerateSchema = z.object({

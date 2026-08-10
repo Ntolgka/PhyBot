@@ -12,7 +12,7 @@ import {
   nowPlayingEmbed,
   successEmbed,
 } from '../embeds.js';
-import { postPanel } from '../panel.js';
+import { panelCoversChannel, postPanel } from '../panel.js';
 import { embedReply, respond } from '../reply.js';
 import {
   assertSameVoiceChannel,
@@ -43,7 +43,11 @@ const playCommand: BotCommand = {
     ),
   async execute({ interaction, guild, member }) {
     const voiceChannel = requireVoiceChannel(member);
-    await interaction.deferReply();
+    // The panel posts a card with the track and every control the moment
+    // playback starts, so a second public card here would only repeat it
+    // without the buttons. The requester still gets their confirmation.
+    const duplicate = panelCoversChannel(guild.id, interaction.channelId);
+    await interaction.deferReply(duplicate ? { flags: MessageFlags.Ephemeral } : {});
 
     const result = await play({
       guildId: guild.id,
@@ -342,7 +346,7 @@ const leaveCommand: BotCommand = {
   },
 };
 
-const lyricsFallback: BotCommand = {
+const sourceCommand: BotCommand = {
   category: 'Music',
   usage: '/source',
   data: new SlashCommandBuilder()
@@ -399,5 +403,5 @@ export const musicCommands: BotCommand[] = [
   volumeCommand,
   joinCommand,
   leaveCommand,
-  lyricsFallback,
+  sourceCommand,
 ];

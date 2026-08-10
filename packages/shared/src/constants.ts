@@ -1,7 +1,5 @@
 /** Values shared by the bot, the HTTP API and the dashboard. */
 
-export const APP_NAME = 'PhyBot';
-
 /** Path the dashboard uses for the realtime connection. */
 export const WS_PATH = '/api/ws';
 

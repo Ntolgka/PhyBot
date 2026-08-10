@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { ChannelType, type Message, type SendableChannels } from 'discord.js';
-import type { PlayerSnapshot } from '@phybot/shared';
+import type { PlayerSnapshot, Track, TrackSource } from '@phybot/shared';
+import { TRACK_SOURCES } from '@phybot/shared';
 import { bus } from '../core/bus.js';
 import { createLogger } from '../core/logger.js';
 import { toErrorMessage } from '../core/errors.js';
+import { historyRepository } from '../db/repositories/misc.js';
 import { stateRepository } from '../db/repositories/state.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { playerManager } from '../music/manager.js';
@@ -13,8 +16,9 @@ const log = createLogger('panel');
 
 /**
  * The music channel keeps one message that always shows what is playing, the
- * queue and the controls. It is edited in place instead of posting a new card
- * per track, and reposted when it scrolls out of sight.
+ * queue and the controls. Playback changes edit it in place; a new track posts
+ * a fresh one at the bottom and removes the previous, as does chatter pushing
+ * it out of sight, so the controls are always reachable without scrolling.
  */
 const PANEL_STATE_KEY = 'music:panels';
 /**
@@ -62,6 +66,20 @@ function panelChannelId(guildId: string): string | null {
   return settings.musicTextChannelId ?? playerManager.get(guildId)?.textChannelId ?? null;
 }
 
+/**
+ * True when the live panel already posts into this channel, which means a
+ * command replying there with its own now-playing card would say the same thing
+ * twice - once with the controls and once without.
+ */
+export function panelCoversChannel(guildId: string, channelId: string): boolean {
+  return panelChannelId(guildId) === channelId;
+}
+
+/** True when this message is the guild's live panel rather than a command reply. */
+export function isPanelMessage(guildId: string, messageId: string): boolean {
+  return readState()[guildId]?.messageId === messageId;
+}
+
 async function resolveChannel(channelId: string): Promise<SendableChannels | null> {
   const client = tryGetClient();
   if (!client?.isReady()) return null;
@@ -82,6 +100,25 @@ function snapshotFor(guildId: string): PlayerSnapshot | null {
 function idleSnapshot(guildId: string): PlayerSnapshot {
   const client = tryGetClient();
   const guild = client?.guilds.cache.get(guildId);
+  // The player is gone once the idle timeout fires, so the last track comes
+  // from stored history; without it the Play again button would be dead on the
+  // one message that exists to offer it.
+  const history = historyRepository.recent(guildId, 1).map((entry): Track => ({
+    id: randomUUID(),
+    title: entry.title,
+    author: entry.author,
+    url: entry.url,
+    duration: entry.duration,
+    isLive: false,
+    thumbnail: null,
+    // History stores the source as free text; only the label matters here.
+    source: (TRACK_SOURCES as readonly string[]).includes(entry.source)
+      ? (entry.source as TrackSource)
+      : 'radio',
+    requestedBy: '',
+    requestedByName: entry.requestedBy,
+    addedAt: entry.playedAt,
+  }));
   return {
     guildId,
     guildName: guild?.name ?? 'this server',
@@ -89,7 +126,7 @@ function idleSnapshot(guildId: string): PlayerSnapshot {
     current: null,
     position: 0,
     queue: [],
-    history: [],
+    history,
     volume: settingsRepository.get(guildId).defaultVolume,
     loop: 'off',
     shuffle: false,
@@ -222,14 +259,6 @@ export async function postPanel(guildId: string, channelId: string): Promise<voi
   messagesSincePost.set(guildId, 0);
 }
 
-export async function removePanel(guildId: string): Promise<void> {
-  const existing = readState()[guildId];
-  if (existing) await deleteMessage(existing);
-  rememberPanel(guildId, null);
-  messagesSincePost.delete(guildId);
-  pending.delete(guildId);
-}
-
 /**
  * Counts chatter in a music channel so the panel can be reposted at the bottom
  * once it has scrolled away.
@@ -255,9 +284,10 @@ export function registerMusicPanel(): void {
   );
   playerManager.on('trackEnd', ({ guildId }) => refreshPanel(guildId));
   playerManager.on('queueEnd', ({ guildId }) => refreshPanel(guildId, { immediate: true }));
-  playerManager.on('created', ({ guildId }) =>
-    refreshPanel(guildId, { immediate: true, repost: true }),
-  );
+  // Refreshed but not reposted: a connection is also opened to speak an arrival
+  // or a reply, and reposting for those would delete and re-send the panel every
+  // time somebody walked into a voice channel. A track starting reposts it.
+  playerManager.on('created', ({ guildId }) => refreshPanel(guildId));
   playerManager.on('destroyed', ({ guildId }) => refreshPanel(guildId, { immediate: true }));
 }
 

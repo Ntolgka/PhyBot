@@ -12,7 +12,15 @@ const log = createLogger('discord');
 
 type AnyInteraction = RepliableInteraction | ChatInputCommandInteraction | ButtonInteraction;
 
-/** Replies or edits depending on whether the interaction was already deferred. */
+/**
+ * Replies or edits depending on whether the interaction was already deferred.
+ *
+ * The edit branch lists the fields explicitly so that anything left over from a
+ * previous state is cleared rather than lingering. `files` has to be part of
+ * that list: leaving it out silently dropped every attachment on a deferred
+ * command, which showed up as an embed whose `attachment://` image pointed at
+ * nothing - a picture that simply never appeared.
+ */
 export async function respond(
   interaction: AnyInteraction,
   options: InteractionReplyOptions,
@@ -23,6 +31,7 @@ export async function respond(
         content: options.content ?? null,
         embeds: options.embeds ?? [],
         components: options.components ?? [],
+        files: options.files ?? [],
       });
       return;
     }

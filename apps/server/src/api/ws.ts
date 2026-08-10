@@ -79,7 +79,3 @@ export function registerWebsocket(app: FastifyInstance): void {
     socket.on('error', () => clients.delete(socket));
   });
 }
-
-export function connectedClients(): number {
-  return clients.size;
-}

@@ -5,6 +5,7 @@ import {
   MAX_IMAGE_UPLOAD_BYTES,
   botProfileUpdateSchema,
   presenceSchema,
+  sendMessageSchema,
   type BotProfile,
   type DashboardOverview,
 } from '@phybot/shared';
@@ -17,6 +18,7 @@ import { getStatus, tryGetClient } from '../../discord/client.js';
 import { deployCommands } from '../../discord/deploy.js';
 import { listGuilds } from '../../discord/index.js';
 import { getPresence, setPresence } from '../../discord/presence.js';
+import { sendMessage } from '../../discord/send.js';
 import { getFreeGamesStatus } from '../../features/index.js';
 import { playerManager } from '../../music/manager.js';
 import { parseBody } from '../validation.js';
@@ -80,6 +82,11 @@ export async function botRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/bot/status', async () => getStatus());
+
+  app.post('/bot/message', async (request) => {
+    const body = parseBody(sendMessageSchema, request.body);
+    return sendMessage({ ...body, requestedBy: 'dashboard' });
+  });
 
   app.get('/bot/profile', async () => {
     const profile = await readProfile();

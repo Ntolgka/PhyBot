@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { LOOP_MODES, truncate, type LoopMode } from '@phybot/shared';
 import { AppError } from '../../core/errors.js';
-import { infoEmbed, queueEmbed, successEmbed } from '../embeds.js';
+import { infoEmbed, queueBrowser, queueEmbed, successEmbed, QUEUE_PAGE_SIZE } from '../embeds.js';
 import { embedReply, respond } from '../reply.js';
 import { assertSameVoiceChannel, requirePlayer } from './helpers.js';
 import type { BotCommand } from './types.js';
@@ -18,7 +18,13 @@ const queueCommand: BotCommand = {
   async execute({ interaction, guild }) {
     const player = requirePlayer(guild.id);
     const page = (interaction.options.getInteger('page') ?? 1) - 1;
-    await respond(interaction, { embeds: [queueEmbed(player.snapshot(), page)] });
+    const snapshot = player.snapshot();
+    // Same browser the panel's Queue button opens: numbered, paged, and every
+    // number on the page can be picked to play it.
+    await respond(interaction, {
+      embeds: [queueEmbed(snapshot, page, QUEUE_PAGE_SIZE)],
+      components: queueBrowser(snapshot, page),
+    });
   },
 };
 

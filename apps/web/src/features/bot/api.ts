@@ -10,11 +10,21 @@ import type {
 import { api } from '../../lib/api';
 import { queryKeys } from '../../lib/queryKeys';
 
-export function useBotStatusQuery() {
-  return useQuery({
-    queryKey: queryKeys.botStatus,
-    queryFn: () => api.get<BotStatus>('/bot/status'),
-    refetchInterval: 30_000,
+export interface SendMessageParams {
+  guildId: string;
+  channelId: string;
+  content: string;
+}
+
+export interface SentMessage {
+  messageId: string;
+  channelId: string;
+  channelName: string;
+}
+
+export function useSendMessageMutation() {
+  return useMutation({
+    mutationFn: (params: SendMessageParams) => api.post<SentMessage>('/bot/message', params),
   });
 }
 

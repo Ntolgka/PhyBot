@@ -82,11 +82,12 @@ async function drain(guildId: string): Promise<void> {
       const item = queue?.shift();
       if (!item) break;
 
-      // Moving the bot mid-song would cut the music off for everyone listening,
-      // so an event in another channel is skipped while something is playing.
+      // Moving the bot away would cut the music off for everyone listening, so
+      // an event in another channel is skipped whenever a track is loaded -
+      // paused counts, because someone is coming back to it.
       const player = playerManager.get(guildId);
-      if (player && player.snapshot().status === 'playing' && player.channelId !== item.channelId) {
-        log.debug({ guildId }, 'Skipped an announcement: music is playing in another channel');
+      if (player && player.snapshot().current !== null && player.channelId !== item.channelId) {
+        log.debug({ guildId }, 'Skipped an announcement: music is loaded in another channel');
         continue;
       }
 

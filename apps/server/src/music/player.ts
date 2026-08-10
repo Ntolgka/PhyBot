@@ -357,6 +357,39 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
     return target;
   }
 
+  /**
+   * Plays the chosen queue positions now, in the order they were picked, and
+   * leaves the rest of the queue behind them.
+   *
+   * Unlike jumping to a position this throws nothing away: picking 23 does not
+   * mark 1 to 22 as played, it just moves 23 to the front. Positions are read
+   * against the queue as it currently stands, which is the same order the list
+   * is numbered in, so mixing beforehand does not change what a number means.
+   */
+  async playSelection(indices: number[]): Promise<Track | null> {
+    const wanted = [...new Set(indices)].filter(
+      (index) => index >= 0 && index < this.queue.tracks.length,
+    );
+    if (wanted.length === 0) return null;
+
+    // Removing from the back keeps the lower indices pointing at the same
+    // tracks while the list shrinks underneath.
+    const removed = new Map<number, Track>();
+    for (const index of [...wanted].sort((a, b) => b - a)) {
+      const track = this.queue.removeAt(index);
+      if (track) removed.set(index, track);
+    }
+
+    const picked = wanted
+      .map((index) => removed.get(index))
+      .filter((track): track is Track => track !== undefined);
+    if (picked.length === 0) return null;
+
+    this.queue.add(picked, { next: true });
+    await this.advance({ force: true });
+    return this.queue.current;
+  }
+
   async playTrackNow(track: Track): Promise<void> {
     this.queue.add([track], { next: true });
     await this.advance({ force: true });

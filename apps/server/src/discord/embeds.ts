@@ -3,6 +3,8 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   type APIEmbedField,
 } from 'discord.js';
 import type { PlayerSnapshot, Track } from '@phybot/shared';
@@ -23,6 +25,9 @@ const SOURCE_LABELS: Record<Track['source'], string> = {
   radio: 'Stream',
   file: 'File',
 };
+
+/** Discord's hard limit on an embed description. */
+const MAX_EMBED_DESCRIPTION = 4096;
 
 export function baseEmbed(): EmbedBuilder {
   return new EmbedBuilder().setColor(COLORS.brand);
@@ -105,11 +110,27 @@ export function queueEmbed(snapshot: PlayerSnapshot, page = 0, pageSize = 10): E
   if (snapshot.current) {
     lines.push(`**Now playing**\n${trackLine(snapshot.current)}\n`);
   }
-  lines.push(
+  const entries =
     slice.length > 0
-      ? slice.map((track, index) => trackLine(track, current * pageSize + index)).join('\n')
-      : '_Nothing queued._',
-  );
+      ? slice.map((track, index) => trackLine(track, current * pageSize + index))
+      : ['_Nothing queued._'];
+
+  // Discord rejects the whole message over 4096 characters. A full page of long
+  // titles and long source URLs lands near 3600, so lines are dropped from the
+  // end rather than risking a rejected edit.
+  const budget = MAX_EMBED_DESCRIPTION - lines.join('\n').length - 40;
+  let used = 0;
+  const shown: string[] = [];
+  for (const entry of entries) {
+    if (used + entry.length + 1 > budget) break;
+    shown.push(entry);
+    used += entry.length + 1;
+  }
+  if (shown.length < entries.length) {
+    shown.push(`_and ${entries.length - shown.length} more on this page_`);
+  }
+
+  lines.push(shown.join('\n'));
   embed.setDescription(lines.join('\n'));
 
   const total = snapshot.queueDuration;
@@ -154,16 +175,31 @@ export function addedEmbed(
 
 /**
  * Live panel kept in the music channel: what is playing, the queue and the
- * controls, all in one message that is edited in place.
+ * controls, all in the one message the music channel keeps at the bottom.
  */
 export function panelEmbed(snapshot: PlayerSnapshot): EmbedBuilder {
   const track = snapshot.current;
   if (!track) {
-    return baseEmbed()
+    // Naming the last track is what makes the Play again button meaningful;
+    // without it the button offers to replay something nobody can see.
+    const last = snapshot.history[0];
+    const idle = baseEmbed()
       .setAuthor({ name: 'Music' })
-      .setTitle('Nothing is playing')
-      .setDescription('Use `/play` or the dashboard to start the music.')
+      .setTitle(last ? truncate(last.title, 100) : 'Nothing is playing')
+      .setDescription(
+        last
+          ? [
+              last.author ? `**${truncate(last.author, 60)}**` : null,
+              'Finished playing. Press Play again to hear it once more, or use `/play`.',
+            ]
+              .filter(Boolean)
+              .join('\n')
+          : 'Use `/play` or the dashboard to start the music.',
+      )
       .setFooter({ text: snapshot.guildName });
+    if (last?.url) idle.setURL(last.url);
+    if (last?.thumbnail) idle.setThumbnail(last.thumbnail);
+    return idle;
   }
 
   const progress = track.isLive
@@ -243,8 +279,91 @@ export const MUSIC_BUTTONS = {
   autoplay: 'music:autoplay',
 } as const;
 
+/** Tracks per page in the queue browser; also Discord's select menu maximum. */
+export const QUEUE_PAGE_SIZE = 25;
+
+export const QUEUE_BROWSE_PREFIX = 'music:qpage:';
+export const QUEUE_PICK_ID = 'music:qpick';
+
+/**
+ * The queue browser: the numbered list, a picker to play any of those numbers,
+ * and page buttons. Lives in an ephemeral message so a long playlist does not
+ * fill the channel.
+ */
+export function queueBrowser(
+  snapshot: PlayerSnapshot,
+  page: number,
+): (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] {
+  const pages = Math.max(1, Math.ceil(snapshot.queue.length / QUEUE_PAGE_SIZE));
+  const current = Math.min(Math.max(page, 0), pages - 1);
+  const start = current * QUEUE_PAGE_SIZE;
+  const slice = snapshot.queue.slice(start, start + QUEUE_PAGE_SIZE);
+
+  const rows: (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] = [];
+
+  if (slice.length > 0) {
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(QUEUE_PICK_ID)
+          .setPlaceholder('Pick numbers to play now')
+          // Several at once, played in the order they were ticked.
+          .setMinValues(1)
+          .setMaxValues(slice.length)
+          .addOptions(
+            slice.map((track, index) =>
+              new StringSelectMenuOptionBuilder()
+                .setLabel(truncate(`${start + index + 1}. ${track.title}`, 100))
+                .setDescription(truncate(track.author || 'Unknown artist', 100))
+                .setValue(String(start + index)),
+            ),
+          ),
+      ),
+    );
+  }
+
+  if (pages > 1) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${QUEUE_BROWSE_PREFIX}${current - 1}`)
+          .setEmoji('◀')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(current === 0),
+        new ButtonBuilder()
+          .setCustomId(`${QUEUE_BROWSE_PREFIX}${current}`)
+          .setLabel(`${current + 1}/${pages}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`${QUEUE_BROWSE_PREFIX}${current + 1}`)
+          .setEmoji('▶')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(current >= pages - 1),
+      ),
+    );
+  }
+
+  return rows;
+}
+
 export function musicControls(snapshot: PlayerSnapshot): ActionRowBuilder<ButtonBuilder>[] {
   const disabled = snapshot.current === null;
+
+  // With nothing playing there is only one useful thing to press, and a row of
+  // greyed out transport buttons is just noise at the bottom of the channel.
+  if (disabled) {
+    return [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(MUSIC_BUTTONS.replay)
+          .setEmoji('🔂')
+          .setLabel('Play again')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(snapshot.history.length === 0),
+      ),
+    ];
+  }
   const primary = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(MUSIC_BUTTONS.previous)
@@ -302,5 +421,16 @@ export function musicControls(snapshot: PlayerSnapshot): ActionRowBuilder<Button
       .setDisabled(disabled),
   );
 
-  return [primary, secondary];
+  // The whole playlist never fits in the panel, so it gets its own button
+  // rather than a truncated list nobody can act on.
+  const browse = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.queue)
+      .setEmoji('📜')
+      .setLabel(snapshot.queue.length > 0 ? `Queue (${snapshot.queue.length})` : 'Queue is empty')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(snapshot.queue.length === 0),
+  );
+
+  return [primary, secondary, browse];
 }

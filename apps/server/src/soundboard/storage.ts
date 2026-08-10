@@ -103,10 +103,6 @@ function soundFilePath(fileName: string): string {
   return resolve(soundsDir(), fileName);
 }
 
-export function soundFileAbsolutePath(fileName: string): string {
-  return soundFilePath(fileName);
-}
-
 const DURATION_PATTERN = /Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d+)/;
 
 /** Probes a file's real duration with the bundled ffmpeg. Rejects anything
