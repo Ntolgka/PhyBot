@@ -78,6 +78,13 @@ async function drain(guildId: string): Promise<void> {
 
   try {
     for (;;) {
+      // Re-read the switch on every line, so turning it off mid-burst stops the
+      // rest instead of letting a queued backlog talk over the decision.
+      if (!settingsRepository.get(guildId).voiceAnnounceEnabled) {
+        queues.delete(guildId);
+        break;
+      }
+
       const queue = queues.get(guildId);
       const item = queue?.shift();
       if (!item) break;

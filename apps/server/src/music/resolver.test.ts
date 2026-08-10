@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractYouTubeId, isPlayableEntry } from './resolver.js';
+import { extractYouTubeId, isPlayableEntry, resolvePlayableCandidates } from './resolver.js';
 import { parseSpotifyUrl } from './spotify.js';
 
 describe('isPlayableEntry', () => {
@@ -95,5 +95,27 @@ describe('parseSpotifyUrl', () => {
 
   it('returns null for anything else', () => {
     expect(parseSpotifyUrl('https://www.youtube.com/watch?v=abc')).toBeNull();
+  });
+});
+
+describe('resolvePlayableCandidates', () => {
+  const base = {
+    id: 't',
+    title: 'Song',
+    author: 'Artist',
+    duration: 200,
+    isLive: false,
+    thumbnail: null,
+    requestedBy: '1',
+    requestedByName: 'x',
+    addedAt: 0,
+  } as const;
+
+  it('gives a direct source its single URL without searching', async () => {
+    // No network: anything that is not Spotify already has a playable URL.
+    for (const source of ['youtube', 'soundcloud', 'radio', 'file'] as const) {
+      const url = `https://example.com/${source}`;
+      await expect(resolvePlayableCandidates({ ...base, source, url })).resolves.toEqual([url]);
+    }
   });
 });

@@ -28,6 +28,8 @@ changing the bot's own name, avatar, banner, description and presence.
 - A Queue button opens the whole playlist, paged and numbered by position. Any
   of those numbers can be picked to play it straight away without losing the
   rest of the queue, and picking several plays them in the order you tick them
+- Synced lyrics: the dashboard follows the song line by line, and /lyrics shows
+  the words around the point the track has reached
 - The voice channel status shows the track that is playing, with a music note
 - Autoplay keeps similar music going when the queue runs out, seeded from the
   track that just finished
@@ -70,7 +72,8 @@ changing the bot's own name, avatar, banner, description and presence.
 - Pick the voice per message, in the dashboard or with /say
 - Optionally announces arrivals: the bot joins whichever voice channel someone
   entered and says who came in, and who left, in the assistant's voice. It stays
-  put while music is playing so a song is never cut off
+  put while music is playing so a song is never cut off. Switch it per server in
+  the dashboard or with `/config voice-announce`
 
 ### Fun
 
@@ -264,31 +267,32 @@ npm run deploy-commands --workspace @phybot/server
 Slash commands are registered automatically when the bot starts. `/help` lists
 them inside Discord.
 
-| Command                                                                       | What it does                                               |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `/play <query>`                                                               | Play or queue a link, playlist or search                   |
-| `/search <words>`                                                             | Show the top results for a search                          |
-| `/nowplaying`                                                                 | Show the current track with control buttons                |
-| `/pause`, `/resume`, `/stop`                                                  | Basic transport controls                                   |
-| `/skip [count]`, `/previous`, `/replay`                                       | Move between tracks                                        |
-| `/forward [seconds]`, `/rewind [seconds]`                                     | Jump 5 seconds (or a custom amount)                        |
-| `/seek <position>`                                                            | Jump to `90`, `1:30` or `1:02:03`                          |
-| `/queue [page]`, `/remove`, `/move`, `/jump`, `/clear`, `/dedupe`             | Manage the queue                                           |
-| `/shuffle [random-order]`                                                     | Mix the queue once, or keep picking at random              |
-| `/panel`                                                                      | Post the live music panel with the queue and controls here |
-| `/source`                                                                     | Show the link of the current track                         |
-| `/loop <off\|track\|queue>`, `/autoplay`, `/volume`                           | Playback modes                                             |
-| `/join`, `/leave`                                                             | Move the bot in and out of voice                           |
-| `/event create\|list\|publish\|cancel`                                        | Events with RSVP buttons                                   |
-| `/sound <name>`, `/sounds`                                                    | Play a soundboard clip, or list them                       |
-| `/imagine <prompt> [style] [count]`                                           | Generate one to four images locally                        |
-| `/edit <image> <change>`                                                      | Rewrite an image from a written instruction                |
-| `/freegames [refresh]`                                                        | Show games that are free right now                         |
-| `/config view\|autorole\|welcome\|goodbye\|freegames\|music-channel\|dj-role` | Server configuration                                       |
-| `/ask <message>`, `/listen <on\|off>`, `/say <text> [voice]`                  | Assistant                                                  |
-| `/turksigara`                                                                 | Post a random picture from turksigara.net                  |
-| `/help`, `/ping`, `/stats`, `/invite`                                         | Utility                                                    |
-| `/restart`                                                                    | Restart the bot after an update (owner only)               |
+| Command                                                                                       | What it does                                               |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `/play <query>`                                                                               | Play or queue a link, playlist or search                   |
+| `/search <words>`                                                                             | Show the top results for a search                          |
+| `/nowplaying`                                                                                 | Show the current track with control buttons                |
+| `/pause`, `/resume`, `/stop`                                                                  | Basic transport controls                                   |
+| `/skip [count]`, `/previous`, `/replay`                                                       | Move between tracks                                        |
+| `/forward [seconds]`, `/rewind [seconds]`                                                     | Jump 5 seconds (or a custom amount)                        |
+| `/seek <position>`                                                                            | Jump to `90`, `1:30` or `1:02:03`                          |
+| `/queue [page]`, `/remove`, `/move`, `/jump`, `/clear`, `/dedupe`                             | Manage the queue                                           |
+| `/shuffle [random-order]`                                                                     | Mix the queue once, or keep picking at random              |
+| `/panel`                                                                                      | Post the live music panel with the queue and controls here |
+| `/source`                                                                                     | Show the link of the current track                         |
+| `/lyrics`                                                                                     | Show the words of the track that is playing                |
+| `/loop <off\|track\|queue>`, `/autoplay`, `/volume`                                           | Playback modes                                             |
+| `/join`, `/leave`                                                                             | Move the bot in and out of voice                           |
+| `/event create\|list\|publish\|cancel`                                                        | Events with RSVP buttons                                   |
+| `/sound <name>`, `/sounds`                                                                    | Play a soundboard clip, or list them                       |
+| `/imagine <prompt> [style] [count]`                                                           | Generate one to four images locally                        |
+| `/edit <image> <change>`                                                                      | Rewrite an image from a written instruction                |
+| `/freegames [refresh]`                                                                        | Show games that are free right now                         |
+| `/config view\|autorole\|welcome\|goodbye\|freegames\|music-channel\|dj-role\|voice-announce` | Server configuration, including the arrival announcements  |
+| `/ask <message>`, `/listen <on\|off>`, `/say <text> [voice]`                                  | Assistant                                                  |
+| `/turksigara`                                                                                 | Post a random picture from turksigara.net                  |
+| `/help`, `/ping`, `/stats`, `/invite`                                                         | Utility                                                    |
+| `/restart`                                                                                    | Restart the bot after an update (owner only)               |
 
 Playback commands respect the DJ role when one is configured, and require the
 member to be in the same voice channel as the bot.

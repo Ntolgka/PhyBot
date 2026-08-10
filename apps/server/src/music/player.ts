@@ -20,10 +20,13 @@ import { createLogger } from '../core/logger.js';
 import { toErrorMessage } from '../core/errors.js';
 import { createPcmStream, type FfmpegStream } from './audioStream.js';
 import { TrackQueue } from './queue.js';
-import { findRelatedTrack, resolvePlayableUrl } from './resolver.js';
+import { findRelatedTrack, resolvePlayableCandidates } from './resolver.js';
 import { fetchPlaybackInfo, invalidatePlayback } from './ytdlp.js';
 
 const log = createLogger('player');
+
+/** Alternative uploads tried when the first match will not play. */
+const MAX_SOURCE_ATTEMPTS = 3;
 
 export interface GuildPlayerEvents {
   trackStart: [Track];
@@ -233,6 +236,11 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
           );
         }
       }
+      // Skipping the last track leaves ffmpeg still feeding the connection, so
+      // the audio carried on playing while the queue reported itself empty.
+      // Reaching the end naturally is harmless here because the stream has
+      // already finished, and stopStream guards the idle handler either way.
+      this.stopStream();
       this.setStatus('idle');
       this.emit('queueEnd');
       this.emitUpdate();
@@ -242,54 +250,73 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
     await this.startTrack(next, 0);
   }
 
-  private async startTrack(track: Track, seekSeconds: number, isRetry = false): Promise<void> {
+  private async startTrack(track: Track, seekSeconds: number): Promise<void> {
     this.stopStream();
     this.setStatus('loading');
     this.startOffset = seekSeconds;
 
-    // Spotify entries resolve to a different (YouTube) url, which is also the
-    // key used by the playback cache when a retry has to invalidate it.
-    let playableUrl = track.url;
+    let lastError = 'No playable source was found';
     try {
-      playableUrl = await resolvePlayableUrl(track);
-      const info = await fetchPlaybackInfo(playableUrl);
-      if (info.duration > 0 && track.duration === 0) track.duration = info.duration;
-      if (info.isLive) track.isLive = true;
-
-      const stream = createPcmStream({
-        url: info.streamUrl,
-        headers: info.headers,
-        seekSeconds,
-      });
-      this.stream = stream;
-
-      const resource = createAudioResource(stream.output, {
-        inputType: StreamType.Raw,
-        inlineVolume: true,
-      });
-      resource.volume?.setVolume(this.volumePercent / 100);
-      this.resource = resource;
-
-      this.transitioning = false;
-      this.audioPlayer.play(resource);
-      this.lastError = null;
-      this.emit('trackStart', track);
-      this.emitUpdate();
-    } catch (error) {
-      const message = toErrorMessage(error);
-      log.warn({ err: error, guildId: this.guild.id, track: track.title }, 'Failed to start track');
-
-      if (!isRetry) {
-        // Signed media URLs expire; drop the cache entry and try once more.
-        invalidatePlayback(playableUrl);
-        await this.startTrack(track, seekSeconds, true);
-        return;
+      for (const [index, url] of (await this.startPlan(track)).entries()) {
+        try {
+          await this.playFrom(track, url, seekSeconds);
+          return;
+        } catch (error) {
+          lastError = toErrorMessage(error);
+          log.warn(
+            { err: error, guildId: this.guild.id, track: track.title, attempt: index + 1 },
+            'Failed to start track',
+          );
+          // Whether the media URL expired or the upload is gated, the cached
+          // entry is no use to the next attempt.
+          invalidatePlayback(url);
+        }
       }
-
-      this.lastError = message;
-      this.emit('playbackError', `${track.title}: ${message}`);
-      await this.advance({ force: true });
+    } catch (error) {
+      lastError = toErrorMessage(error);
+      log.warn({ err: error, guildId: this.guild.id, track: track.title }, 'Failed to start track');
     }
+
+    this.lastError = lastError;
+    this.emit('playbackError', `${track.title}: ${lastError}`);
+    await this.advance({ force: true });
+  }
+
+  /**
+   * The URLs to try, in order.
+   *
+   * The first choice gets a second go, which is what recovers from a signed
+   * media URL that expired while the track sat in the queue. After that come
+   * the other matches for the same song, so a YouTube upload that demands a
+   * sign-in is stepped over rather than killing the track.
+   */
+  private async startPlan(track: Track): Promise<string[]> {
+    const candidates = (await resolvePlayableCandidates(track)).slice(0, MAX_SOURCE_ATTEMPTS);
+    const [first] = candidates;
+    return first ? [first, ...candidates] : [];
+  }
+
+  /** Opens one source and hands it to the voice connection. */
+  private async playFrom(track: Track, url: string, seekSeconds: number): Promise<void> {
+    const info = await fetchPlaybackInfo(url);
+    if (info.duration > 0 && track.duration === 0) track.duration = info.duration;
+    if (info.isLive) track.isLive = true;
+
+    const stream = createPcmStream({ url: info.streamUrl, headers: info.headers, seekSeconds });
+    this.stream = stream;
+
+    const resource = createAudioResource(stream.output, {
+      inputType: StreamType.Raw,
+      inlineVolume: true,
+    });
+    resource.volume?.setVolume(this.volumePercent / 100);
+    this.resource = resource;
+
+    this.transitioning = false;
+    this.audioPlayer.play(resource);
+    this.lastError = null;
+    this.emit('trackStart', track);
+    this.emitUpdate();
   }
 
   private stopStream(): void {

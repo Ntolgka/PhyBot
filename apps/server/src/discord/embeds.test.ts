@@ -4,8 +4,10 @@ import {
   musicControls,
   panelEmbed,
   queueBrowser,
+  replayOneControls,
   MUSIC_BUTTONS,
   QUEUE_PAGE_SIZE,
+  REPLAY_ONE_PREFIX,
 } from './embeds.js';
 
 const track: Track = {
@@ -159,5 +161,40 @@ describe('queueBrowser', () => {
 
   it('shows no picker for an empty queue', () => {
     expect(queueBrowser(snapshot({ queue: [] }), 0)).toEqual([]);
+  });
+});
+
+describe('the panel offers the lyrics', () => {
+  it('adds a Lyrics button beside the queue while a track plays', () => {
+    const rows = musicControls(snapshot({ status: 'playing', current: track, queue: [track] }));
+    const ids = rows
+      .at(-1)
+      ?.toJSON()
+      .components.map((component) => component.custom_id);
+    expect(ids).toContain(MUSIC_BUTTONS.lyrics);
+  });
+
+  it('leaves the idle card with nothing but Play again', () => {
+    const rows = musicControls(snapshot({ current: null, history: [track] }));
+    const ids = rows.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
+    expect(ids).toEqual([MUSIC_BUTTONS.replay]);
+  });
+});
+
+describe('replayOneControls', () => {
+  it('binds the button to one stored play', () => {
+    const button = replayOneControls(42)[0]?.toJSON().components[0];
+    expect(button?.custom_id).toBe(`${REPLAY_ONE_PREFIX}42`);
+    expect(button?.disabled).toBeFalsy();
+  });
+
+  it('stays inside the Discord custom id limit for any plausible id', () => {
+    const button = replayOneControls(9_007_199_254_740_991)[0]?.toJSON().components[0];
+    expect((button?.custom_id ?? '').length).toBeLessThanOrEqual(100);
+  });
+
+  it('is the only control left on a finished card', () => {
+    expect(replayOneControls(1)).toHaveLength(1);
+    expect(replayOneControls(1)[0]?.toJSON().components).toHaveLength(1);
   });
 });

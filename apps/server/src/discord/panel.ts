@@ -9,7 +9,7 @@ import { historyRepository } from '../db/repositories/misc.js';
 import { stateRepository } from '../db/repositories/state.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { playerManager } from '../music/manager.js';
-import { musicControls, panelEmbed } from './embeds.js';
+import { musicControls, panelEmbed, replayOneControls } from './embeds.js';
 import { tryGetClient } from './client.js';
 
 const log = createLogger('panel');
@@ -33,6 +33,8 @@ const REPOST_AFTER_MESSAGES = 6;
 interface PanelLocation {
   channelId: string;
   messageId: string;
+  /** The play this card is showing, so it can be left behind as replayable. */
+  historyId?: number;
 }
 
 type PanelState = Record<string, PanelLocation>;
@@ -97,13 +99,9 @@ function snapshotFor(guildId: string): PlayerSnapshot | null {
   return player ? player.snapshot() : null;
 }
 
-function idleSnapshot(guildId: string): PlayerSnapshot {
-  const client = tryGetClient();
-  const guild = client?.guilds.cache.get(guildId);
-  // The player is gone once the idle timeout fires, so the last track comes
-  // from stored history; without it the Play again button would be dead on the
-  // one message that exists to offer it.
-  const history = historyRepository.recent(guildId, 1).map((entry): Track => ({
+/** The last track this server played, read back from storage. */
+function storedHistory(guildId: string): Track[] {
+  return historyRepository.recent(guildId, 1).map((entry): Track => ({
     id: randomUUID(),
     title: entry.title,
     author: entry.author,
@@ -119,6 +117,11 @@ function idleSnapshot(guildId: string): PlayerSnapshot {
     requestedByName: entry.requestedBy,
     addedAt: entry.playedAt,
   }));
+}
+
+function idleSnapshot(guildId: string): PlayerSnapshot {
+  const client = tryGetClient();
+  const guild = client?.guilds.cache.get(guildId);
   return {
     guildId,
     guildName: guild?.name ?? 'this server',
@@ -126,7 +129,7 @@ function idleSnapshot(guildId: string): PlayerSnapshot {
     current: null,
     position: 0,
     queue: [],
-    history,
+    history: storedHistory(guildId),
     volume: settingsRepository.get(guildId).defaultVolume,
     loop: 'off',
     shuffle: false,
@@ -137,6 +140,19 @@ function idleSnapshot(guildId: string): PlayerSnapshot {
     queueDuration: 0,
     updatedAt: Date.now(),
   };
+}
+
+/**
+ * Fills in the last played track when the live player cannot supply one.
+ *
+ * A connection opened purely to speak - an arrival announcement, an assistant
+ * reply - creates a brand new player whose in-memory history is empty. Reading
+ * that snapshot straight made the panel forget the song it had been offering to
+ * replay and greyed the button out, some minutes after playback ended.
+ */
+function withStoredHistory(guildId: string, snapshot: PlayerSnapshot): PlayerSnapshot {
+  if (snapshot.current || snapshot.history.length > 0) return snapshot;
+  return { ...snapshot, history: storedHistory(guildId) };
 }
 
 async function writePanel(guildId: string): Promise<void> {
@@ -151,7 +167,8 @@ async function writePanel(guildId: string): Promise<void> {
     return;
   }
 
-  const snapshot = snapshotFor(guildId) ?? idleSnapshot(guildId);
+  const live = snapshotFor(guildId);
+  const snapshot = live ? withStoredHistory(guildId, live) : idleSnapshot(guildId);
   const payload = { embeds: [panelEmbed(snapshot)], components: musicControls(snapshot) };
 
   const existing = readState()[guildId];
@@ -175,14 +192,55 @@ async function writePanel(guildId: string): Promise<void> {
     }
   }
 
-  if (existing) await deleteMessage(existing);
+  const historyId = currentHistoryId(guildId, snapshot);
+
+  if (existing) {
+    // A card for a song that has finished stays in the channel with its own
+    // Play again, so scrolling back through the evening still lets any of those
+    // songs be replayed. Reposts for any other reason (chatter pushing it out
+    // of sight) would only duplicate the same song, so those are removed.
+    const finished = existing.historyId !== undefined && existing.historyId !== historyId;
+    if (finished) await demoteMessage(existing);
+    else await deleteMessage(existing);
+  }
 
   try {
     const message: Message = await channel.send(payload);
-    rememberPanel(guildId, { channelId, messageId: message.id });
+    rememberPanel(guildId, {
+      channelId,
+      messageId: message.id,
+      ...(historyId !== undefined ? { historyId } : {}),
+    });
     messagesSincePost.set(guildId, 0);
   } catch (error) {
     log.warn({ guildId, channelId }, `Could not post the music panel: ${toErrorMessage(error)}`);
+  }
+}
+
+/**
+ * The stored play matching what the panel is about to show. Written on every
+ * track start, so the newest row for this guild is the track that just began.
+ */
+function currentHistoryId(guildId: string, snapshot: PlayerSnapshot): number | undefined {
+  if (!snapshot.current) return undefined;
+  const [latest] = historyRepository.recent(guildId, 1);
+  return latest && latest.url === snapshot.current.url ? latest.id : undefined;
+}
+
+/** Leaves an old card in place, carrying only a Play again for its own song. */
+async function demoteMessage(location: PanelLocation): Promise<void> {
+  if (location.historyId === undefined) {
+    await deleteMessage(location);
+    return;
+  }
+  const channel = await resolveChannel(location.channelId);
+  if (!channel) return;
+  try {
+    await channel.messages.edit(location.messageId, {
+      components: replayOneControls(location.historyId),
+    });
+  } catch (error) {
+    log.debug({ messageId: location.messageId }, `Could not demote: ${toErrorMessage(error)}`);
   }
 }
 
@@ -250,7 +308,8 @@ export async function postPanel(guildId: string, channelId: string): Promise<voi
 
   const channel = await resolveChannel(channelId);
   if (!channel) return;
-  const snapshot = snapshotFor(guildId) ?? idleSnapshot(guildId);
+  const live = snapshotFor(guildId);
+  const snapshot = live ? withStoredHistory(guildId, live) : idleSnapshot(guildId);
   const message = await channel.send({
     embeds: [panelEmbed(snapshot)],
     components: musicControls(snapshot),

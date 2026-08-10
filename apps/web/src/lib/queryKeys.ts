@@ -14,6 +14,7 @@ export const queryKeys = {
   guildMembers: (guildId: string, query: string) => ['guilds', guildId, 'members', query] as const,
   guildSettings: (guildId: string) => ['guilds', guildId, 'settings'] as const,
   player: (guildId: string) => ['music', guildId, 'player'] as const,
+  lyrics: (guildId: string, trackUrl: string) => ['music', guildId, 'lyrics', trackUrl] as const,
   search: (q: string, limit: number) => ['music', 'search', q, limit] as const,
   history: (guildId: string, limit: number) => ['music', guildId, 'history', limit] as const,
   topTracks: (guildId: string, limit: number) => ['music', guildId, 'topTracks', limit] as const,

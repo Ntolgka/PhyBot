@@ -13,7 +13,7 @@ function save(guildId: string, patch: GuildSettingsUpdate): void {
 
 const configCommand: BotCommand = {
   category: 'Configuration',
-  usage: '/config <view|autorole|welcome|goodbye|freegames|music-channel|dj-role>',
+  usage: '/config <view|autorole|welcome|goodbye|freegames|music-channel|dj-role|voice-announce>',
   permission: 'manage',
   data: new SlashCommandBuilder()
     .setName('config')
@@ -90,6 +90,16 @@ const configCommand: BotCommand = {
         .addRoleOption((option) =>
           option.setName('role').setDescription('Leave empty so everyone can control playback'),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('voice-announce')
+        .setDescription('Speak who joins and leaves a voice channel')
+        .addBooleanOption((option) =>
+          option
+            .setName('enabled')
+            .setDescription('Leave empty to switch it to the opposite of what it is now'),
+        ),
     ),
   async execute({ interaction, guild, settings }) {
     const sub = interaction.options.getSubcommand();
@@ -159,6 +169,22 @@ const configCommand: BotCommand = {
         );
         return;
       }
+      case 'voice-announce': {
+        // Omitting the option flips it, so the common case is one word.
+        const enabled = interaction.options.getBoolean('enabled') ?? !settings.voiceAnnounceEnabled;
+        save(guild.id, { voiceAnnounceEnabled: enabled });
+        await embedReply(
+          interaction,
+          successEmbed(
+            enabled
+              ? 'The bot will join a voice channel and say who comes in and who leaves.'
+              : 'Voice arrivals are no longer announced.',
+          ),
+          true,
+        );
+        return;
+      }
+
       case 'dj-role': {
         const role = interaction.options.getRole('role');
         save(guild.id, { djRoleId: role?.id ?? null });

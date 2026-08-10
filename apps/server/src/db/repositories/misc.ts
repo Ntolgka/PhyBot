@@ -124,6 +124,20 @@ interface HistoryRow {
   played_at: number;
 }
 
+function toHistoryEntry(row: HistoryRow): HistoryEntry {
+  return {
+    id: row.id,
+    guildId: row.guild_id,
+    title: row.title,
+    author: row.author,
+    url: row.url,
+    source: row.source,
+    duration: row.duration,
+    requestedBy: row.requested_by,
+    playedAt: row.played_at,
+  };
+}
+
 export const historyRepository = {
   add(guildId: string, track: Track): void {
     execute(
@@ -140,23 +154,19 @@ export const historyRepository = {
     );
   },
 
+  /** One stored play, used by the Play again button left on an older card. */
+  byId(id: number): HistoryEntry | null {
+    const row = queryOne<HistoryRow>('SELECT * FROM play_history WHERE id = ?', id);
+    return row ? toHistoryEntry(row) : null;
+  },
+
   recent(guildId: string, limit = 50): HistoryEntry[] {
     const rows = queryAll<HistoryRow>(
       'SELECT * FROM play_history WHERE guild_id = ? ORDER BY played_at DESC LIMIT ?',
       guildId,
       Math.min(Math.max(limit, 1), 200),
     );
-    return rows.map((row) => ({
-      id: row.id,
-      guildId: row.guild_id,
-      title: row.title,
-      author: row.author,
-      url: row.url,
-      source: row.source,
-      duration: row.duration,
-      requestedBy: row.requested_by,
-      playedAt: row.played_at,
-    }));
+    return rows.map(toHistoryEntry);
   },
 
   topTracks(

@@ -14,6 +14,7 @@ import {
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { historyRepository } from '../../db/repositories/misc.js';
 import { playerManager } from '../../music/manager.js';
+import { findLyrics } from '../../music/lyrics.js';
 import { searchTracks } from '../../music/resolver.js';
 import { getPlayer, join, leave, play } from '../../music/service.js';
 import { parseBody } from '../validation.js';
@@ -27,6 +28,13 @@ export async function musicRoutes(app: FastifyInstance): Promise<void> {
     const { q, limit } = request.query as { q?: string; limit?: string };
     if (!q || q.trim().length === 0) return [];
     return searchTracks(q, Math.min(Number(limit ?? 8) || 8, 20));
+  });
+
+  app.get('/guilds/:guildId/lyrics', async (request) => {
+    const { guildId } = request.params as { guildId: string };
+    const current = playerManager.get(guildId)?.snapshot().current;
+    if (!current) throw new AppError('not_playing', 'Nothing is playing right now.', 409);
+    return (await findLyrics(current)) ?? null;
   });
 
   app.get('/guilds/:guildId/player', async (request) => {

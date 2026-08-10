@@ -281,20 +281,53 @@ export async function searchTracks(query: string, limit = 8): Promise<SearchResu
 }
 
 /**
- * Finds a playable YouTube match for a track that has no direct stream
- * (currently only Spotify entries).
+ * Every YouTube match for a track, best first.
+ *
+ * YouTube gates individual videos behind "sign in to confirm you're not a bot",
+ * and the top match for a song is as likely to be gated as any other. Since a
+ * Spotify track is matched by search anyway, the alternatives are already in
+ * hand - the same song usually appears three or four times - so a blocked
+ * upload can be stepped over instead of failing the track.
+ *
+ * Anything that is not a Spotify entry has exactly one URL and no alternatives.
  */
-export async function resolvePlayableUrl(track: Track): Promise<string> {
-  if (track.source !== 'spotify') return track.url;
+export async function resolvePlayableCandidates(track: Track): Promise<string[]> {
+  if (track.source !== 'spotify') return [track.url];
+
   const query = track.searchQuery ?? `${track.author} ${track.title}`.trim();
+
+  // Seeking restarts the track, and without this every five second step paid
+  // for another search: measured 2.8 s before the audio could even move.
+  const cached = matchCache.get(query);
+  if (cached && cached.expiresAt > Date.now()) return cached.urls;
+
   const entries = await searchEntries(query, SEARCH_OVERFETCH, 'ytsearch');
-  const playable = entries.find(isPlayableEntry);
-  const match = playable?.webpage_url ?? playable?.url;
-  if (!match) {
-    log.warn({ query }, 'No YouTube match for Spotify track');
-    throw new AppError('no_match', `Could not find a playable version of "${track.title}"`, 404);
+  const urls = entries
+    .filter(isPlayableEntry)
+    .map((entry) => entry.webpage_url ?? entry.url)
+    .filter((url): url is string => Boolean(url));
+
+  const unique = [...new Set(urls)];
+  if (unique.length === 0) log.warn({ query }, 'No YouTube match for Spotify track');
+  else rememberMatches(query, unique);
+  return unique;
+}
+
+/**
+ * Which YouTube uploads a Spotify track matched. Only the search is cached, not
+ * the media URLs - those are signed and short lived, and stay in the playback
+ * cache with its own much shorter lifetime.
+ */
+const matchCache = new Map<string, { urls: string[]; expiresAt: number }>();
+const MATCH_TTL_MS = 30 * 60 * 1000;
+const MATCH_CACHE_LIMIT = 200;
+
+function rememberMatches(query: string, urls: string[]): void {
+  if (matchCache.size >= MATCH_CACHE_LIMIT) {
+    const oldest = matchCache.keys().next();
+    if (!oldest.done) matchCache.delete(oldest.value);
   }
-  return match;
+  matchCache.set(query, { urls, expiresAt: Date.now() + MATCH_TTL_MS });
 }
 
 /**

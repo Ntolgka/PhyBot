@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { LoopMode, PlayerSnapshot, PlayRequestInput, SearchResult } from '@phybot/shared';
+import type {
+  LoopMode,
+  PlayerSnapshot,
+  PlayRequestInput,
+  SearchResult,
+  TrackLyrics,
+} from '@phybot/shared';
 import { api } from '../../lib/api';
 import { queryKeys } from '../../lib/queryKeys';
 import type {
@@ -22,6 +28,20 @@ export function usePlayerQuery(guildId: string | null) {
     queryFn: () => api.get<PlayerSnapshot | null>(`/guilds/${guildId}/player`),
     enabled: guildId !== null,
     refetchInterval: 10_000,
+  });
+}
+
+/**
+ * Lyrics for the current track. Keyed by the track URL so switching songs
+ * fetches once and going back to a played song is served from cache.
+ */
+export function useLyricsQuery(guildId: string | null, trackUrl: string | null) {
+  return useQuery({
+    queryKey: queryKeys.lyrics(guildId ?? '', trackUrl ?? ''),
+    queryFn: () => api.get<TrackLyrics | null>(`/guilds/${guildId}/lyrics`),
+    enabled: guildId !== null && trackUrl !== null,
+    staleTime: Infinity,
+    retry: false,
   });
 }
 

@@ -12,6 +12,7 @@ import { JoinPanel } from './music/JoinPanel';
 import { SearchPanel } from './music/SearchPanel';
 import { QueuePanel } from './music/QueuePanel';
 import { HistoryPanel } from './music/HistoryPanel';
+import { LyricsPanel } from './music/LyricsPanel';
 
 export function MusicPage(): ReactNode {
   const guilds = useGuildsQuery();
@@ -52,7 +53,10 @@ export function MusicPage(): ReactNode {
           ) : player.isError ? (
             <ErrorState description={errorMessage(player.error)} onRetry={() => player.refetch()} />
           ) : player.data ? (
-            <NowPlayingCard guildId={guildId} player={player.data} />
+            <>
+              <NowPlayingCard guildId={guildId} player={player.data} />
+              <LyricsPanel guildId={guildId} player={player.data} />
+            </>
           ) : (
             <JoinPanel guildId={guildId} channels={channels.data ?? []} />
           )}

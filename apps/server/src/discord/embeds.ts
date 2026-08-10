@@ -276,8 +276,28 @@ export const MUSIC_BUTTONS = {
   shuffle: 'music:shuffle',
   replay: 'music:replay',
   queue: 'music:queue',
+  lyrics: 'music:lyrics',
   autoplay: 'music:autoplay',
 } as const;
+
+export const REPLAY_ONE_PREFIX = 'music:replayone:';
+
+/**
+ * The single button left on a song's card once it has finished, bound to that
+ * exact play so scrolling back and pressing it replays that song rather than
+ * whatever happens to be current.
+ */
+export function replayOneControls(historyId: number): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${REPLAY_ONE_PREFIX}${historyId}`)
+        .setEmoji('🔂')
+        .setLabel('Play again')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
 
 /** Tracks per page in the queue browser; also Discord's select menu maximum. */
 export const QUEUE_PAGE_SIZE = 25;
@@ -430,6 +450,11 @@ export function musicControls(snapshot: PlayerSnapshot): ActionRowBuilder<Button
       .setLabel(snapshot.queue.length > 0 ? `Queue (${snapshot.queue.length})` : 'Queue is empty')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(snapshot.queue.length === 0),
+    new ButtonBuilder()
+      .setCustomId(MUSIC_BUTTONS.lyrics)
+      .setEmoji('🎤')
+      .setLabel('Lyrics')
+      .setStyle(ButtonStyle.Secondary),
   );
 
   return [primary, secondary, browse];

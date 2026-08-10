@@ -5,6 +5,7 @@ import { configCommands } from './config.js';
 import { musicCommands } from './music.js';
 import { queueCommands } from './queue.js';
 import { imagineCommands } from './imagine.js';
+import { lyricsCommands } from './lyrics.js';
 import { soundboardCommands } from './soundboard.js';
 import { turksigaraCommands } from './turksigara.js';
 import { utilityCommands } from './utility.js';
@@ -47,6 +48,7 @@ export const commandRegistry = new CommandRegistry([
   ...queueCommands,
   ...soundboardCommands,
   ...imagineCommands,
+  ...lyricsCommands,
   ...communityCommands,
   ...configCommands,
   ...assistantCommands,

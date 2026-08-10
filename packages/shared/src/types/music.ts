@@ -88,3 +88,19 @@ export interface ResolvedRequest {
    */
   partial?: boolean;
 }
+
+export interface LyricLine {
+  /** Seconds from the start of the track. */
+  at: number;
+  text: string;
+}
+
+/** Lyrics for the track that is playing, timed when the source has timings. */
+export interface TrackLyrics {
+  artist: string;
+  title: string;
+  lines: LyricLine[];
+  plain: string;
+  synced: boolean;
+  source: string;
+}

@@ -6,7 +6,7 @@ import {
   type Interaction,
   type StringSelectMenuInteraction,
 } from 'discord.js';
-import { SEEK_STEP_SECONDS, type LoopMode } from '@phybot/shared';
+import { SEEK_STEP_SECONDS, truncate, type LoopMode, type PlayerSnapshot } from '@phybot/shared';
 import { AppError, toErrorMessage } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
 import { historyRepository } from '../db/repositories/misc.js';
@@ -17,11 +17,13 @@ import { play } from '../music/service.js';
 import { suggestVoices } from './commands/assistant.js';
 import { commandRegistry } from './commands/index.js';
 import { handleFluxButton, handleFluxSelect } from './commands/imagine.js';
+import { buildLyricsEmbed } from './commands/lyrics.js';
 import { executeSoundCommand, findSoundCommand } from './commands/soundboard.js';
 import { hasPermission, permissionMessage } from './commands/helpers.js';
 import {
   errorEmbed,
   musicControls,
+  successEmbed,
   nowPlayingEmbed,
   panelEmbed,
   queueBrowser,
@@ -30,6 +32,7 @@ import {
   QUEUE_BROWSE_PREFIX,
   QUEUE_PAGE_SIZE,
   QUEUE_PICK_ID,
+  REPLAY_ONE_PREFIX,
 } from './embeds.js';
 import { isPanelMessage } from './panel.js';
 import { findCustomCommand, renderCustomCommand } from './customCommands.js';
@@ -156,6 +159,12 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     await showQueuePage(interaction, Number(customId.slice(QUEUE_BROWSE_PREFIX.length)) || 0, true);
     return;
   }
+  // Left on the card of a song that has already finished, so it names its own
+  // play rather than replaying whatever is current.
+  if (customId.startsWith(REPLAY_ONE_PREFIX)) {
+    await replayStoredTrack(interaction, Number(customId.slice(REPLAY_ONE_PREFIX.length)));
+    return;
+  }
   const player = playerManager.get(interaction.guild.id);
   if (!player) {
     // Play again is the whole point of the message posted once playback ends,
@@ -171,9 +180,13 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  // Looking at the queue changes nothing, so it does not need the DJ role.
+  // Reading the queue or the words changes nothing, so neither needs the DJ role.
   if (customId === MUSIC_BUTTONS.queue) {
     await showQueuePage(interaction, 0, false);
+    return;
+  }
+  if (customId === MUSIC_BUTTONS.lyrics) {
+    await showLyrics(interaction, player.snapshot());
     return;
   }
 
@@ -267,6 +280,33 @@ async function showQueuePage(
   else await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
 }
 
+/**
+ * Shows the words for the track playing now. Ephemeral, because a whole song
+ * posted publicly would push the panel out of sight every time anyone asked.
+ */
+async function showLyrics(interaction: ButtonInteraction, snapshot: PlayerSnapshot): Promise<void> {
+  if (!snapshot.current) {
+    await interaction.reply({
+      embeds: [errorEmbed('Nothing is playing right now.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Looking the words up takes a moment on the first play of a track.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const embed = await buildLyricsEmbed(snapshot);
+  await respond(interaction, {
+    embeds: [
+      embed ??
+        errorEmbed(
+          `No lyrics found for **${truncate(snapshot.current.title, 80)}**.`,
+          'Nothing found',
+        ),
+    ],
+  });
+}
+
 /** Plays the numbers picked in the queue browser, in the order they were ticked. */
 async function handleQueuePick(interaction: StringSelectMenuInteraction): Promise<void> {
   if (interaction.customId !== QUEUE_PICK_ID || !interaction.guild) return;
@@ -299,6 +339,47 @@ async function handleQueuePick(interaction: StringSelectMenuInteraction): Promis
   await interaction.editReply({
     embeds: [queueEmbed(snapshot, 0, QUEUE_PAGE_SIZE)],
     components: queueBrowser(snapshot, 0),
+  });
+}
+
+/**
+ * Queues one specific stored play, whichever card it was pressed from. Scrolling
+ * back to a song from earlier in the evening and pressing its button plays that
+ * song, not the current one.
+ */
+async function replayStoredTrack(interaction: ButtonInteraction, historyId: number): Promise<void> {
+  if (!interaction.guild) return;
+
+  const entry = Number.isInteger(historyId) ? historyRepository.byId(historyId) : null;
+  if (!entry || entry.guildId !== interaction.guild.id) {
+    await interaction.reply({
+      embeds: [errorEmbed('That track is no longer available.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const voiceChannelId =
+    member.voice.channelId ?? playerManager.get(interaction.guild.id)?.channelId;
+  if (!voiceChannelId) {
+    await interaction.reply({
+      embeds: [errorEmbed('Join a voice channel first.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await play({
+    guildId: interaction.guild.id,
+    query: entry.url,
+    requester: { id: member.id, name: member.displayName },
+    voiceChannelId,
+    textChannelId: interaction.channelId,
+  });
+  await respond(interaction, {
+    embeds: [successEmbed(`Queued **${truncate(entry.title, 80)}**.`)],
   });
 }
 
