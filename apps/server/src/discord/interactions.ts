@@ -428,14 +428,18 @@ async function replayCollection(interaction: ButtonInteraction, id: number): Pro
     voiceChannelId,
     textChannelId: interaction.channelId,
   });
+  const name = truncate(result.playlistName ?? collection.title, 80);
+  // A playlist that has since been emptied or made private resolves to nothing,
+  // and reporting "queued 0 tracks" as a success would be misleading.
   await respond(interaction, {
-    embeds: [
-      successEmbed(
-        `Queued **${truncate(result.playlistName ?? collection.title, 80)}** — ${result.added} track${
-          result.added === 1 ? '' : 's'
-        }.`,
-      ),
-    ],
+    embeds:
+      result.added === 0
+        ? [errorEmbed(`Nothing in **${name}** could be played. It may have changed since.`)]
+        : [
+            successEmbed(
+              `Queued **${name}** — ${result.added} track${result.added === 1 ? '' : 's'}.`,
+            ),
+          ],
   });
 }
 

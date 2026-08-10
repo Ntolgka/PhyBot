@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Track } from '@phybot/shared';
 import { SESSION_TTL_SECONDS } from '@phybot/shared';
 import { execute, queryAll, queryOne } from '../database.js';

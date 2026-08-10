@@ -252,7 +252,6 @@ export function panelEmbed(snapshot: PlayerSnapshot): EmbedBuilder {
   embed
     .setFooter({
       text: [
-        snapshot.voiceChannelName ? `In ${snapshot.voiceChannelName}` : null,
         snapshot.loop !== 'off' ? `Loop: ${snapshot.loop}` : null,
         snapshot.shuffle ? 'Random order' : null,
         snapshot.autoplay ? 'Autoplay on' : null,
@@ -312,7 +311,7 @@ function replayButton(target: CardTarget): ButtonBuilder {
  * play so scrolling back and pressing it replays that song, or that playlist,
  * rather than whatever happens to be current.
  */
-export function replayOneControls(target: CardTarget): ActionRowBuilder<ButtonBuilder>[] {
+export function replayControls(target: CardTarget): ActionRowBuilder<ButtonBuilder>[] {
   return [new ActionRowBuilder<ButtonBuilder>().addComponents(replayButton(target))];
 }
 

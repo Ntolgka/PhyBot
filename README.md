@@ -22,9 +22,12 @@ changing the bot's own name, avatar, banner, description and presence.
   tracks when the queue runs out
 - Volume control, per-server default volume and idle disconnect timeout
 - A live music panel in the chosen music channel: the current track, a progress
-  bar, the whole queue and working control buttons. Each new track posts a fresh
-  panel at the bottom and clears the previous one, so the queue is always in
-  view; playback changes update that message in place
+  bar, the whole queue and working control buttons. Playback changes update the
+  card in place, so the queue is always in view at the bottom of the channel
+- Each song leaves its own card behind, carrying a Play again button for that
+  song rather than for whatever played most recently. A playlist keeps one card
+  that is edited as it advances, and when it finishes that card offers to play
+  the whole playlist again
 - A Queue button opens the whole playlist, paged and numbered by position. Any
   of those numbers can be picked to play it straight away without losing the
   rest of the queue, and picking several plays them in the order you tick them

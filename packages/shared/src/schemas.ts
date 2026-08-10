@@ -6,7 +6,6 @@ import { CUSTOM_COMMAND_TYPES } from './types/commands.js';
 import { GAME_STORES } from './types/freegames.js';
 import { FLUX_BACKENDS, FLUX_STYLES, MAX_FLUX_BATCH, MIN_FLUX_BATCH } from './types/flux.js';
 import { LOOP_MODES } from './types/music.js';
-import { RSVP_STATUSES } from './types/events.js';
 import { TTS_PROVIDERS } from './types/tts.js';
 
 /** Discord snowflakes are 17-20 digit numeric strings. */

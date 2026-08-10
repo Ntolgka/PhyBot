@@ -3,10 +3,8 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { config } from '../core/config.js';
-import { createLogger } from '../core/logger.js';
 import { ExternalServiceError } from '../core/errors.js';
 
-const log = createLogger('yt-dlp');
 const require = createRequire(import.meta.url);
 
 /**

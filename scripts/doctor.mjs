@@ -23,7 +23,9 @@ const shellHost = process.env.WEB_HOST;
 const envPath = new URL('../.env', import.meta.url);
 let fileHost;
 try {
-  fileHost = /^\s*WEB_HOST\s*=\s*["']?([^"'\r\n#]+)/m.exec(readFileSync(envPath, 'utf8'))?.[1].trim();
+  fileHost = /^\s*WEB_HOST\s*=\s*["']?([^"'\r\n#]+)/m
+    .exec(readFileSync(envPath, 'utf8'))?.[1]
+    .trim();
 } catch {
   // No .env yet, which is fine before the first run.
 }
@@ -206,7 +208,14 @@ if (ffmpegPath && online) {
   // Any https host will do. The response is not media, so reaching the point of
   // complaining about the *content* means the connection itself succeeded.
   const tls = await run(ffmpegPath, [
-    '-hide_banner', '-loglevel', 'error', '-i', 'https://www.google.com/generate_204', '-f', 'null', '-',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    'https://www.google.com/generate_204',
+    '-f',
+    'null',
+    '-',
   ]);
   const reached = /invalid data|end of file|empty|does not contain/i.test(tls.stderr);
   if (tls.code === 0 || reached) {
@@ -226,8 +235,16 @@ if (ffmpegPath && ytDlpPath && existsSync(ytDlpPath) && online) {
   // different question than the one being asked.
   const probe = await run(ytDlpPath, [
     'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    '--no-color', '--ignore-config', '--no-warnings', '--skip-download',
-    '-f', 'bestaudio', '--print', 'urls', '--print', '%(http_headers.User-Agent)s',
+    '--no-color',
+    '--ignore-config',
+    '--no-warnings',
+    '--skip-download',
+    '-f',
+    'bestaudio',
+    '--print',
+    'urls',
+    '--print',
+    '%(http_headers.User-Agent)s',
   ]);
   const [mediaUrl = '', userAgent = ''] = String(probe.stdout).trim().split('\n');
 
@@ -237,15 +254,38 @@ if (ffmpegPath && ytDlpPath && existsSync(ytDlpPath) && online) {
     const client = /[?&]c=([A-Z_]+)/.exec(mediaUrl)?.[1];
     report('yt-dlp resolves a track', true, client ? `client ${client}` : 'got a media URL');
 
-    const args = ['-hide_banner', '-loglevel', 'error', '-reconnect', '1', '-reconnect_on_network_error', '1'];
+    const args = [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-reconnect',
+      '1',
+      '-reconnect_on_network_error',
+      '1',
+    ];
     if (userAgent && userAgent !== 'NA') args.push('-user_agent', userAgent);
     const fetched = await run(ffmpegPath, [
-      ...args, '-i', mediaUrl, '-t', '1', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
+      ...args,
+      '-i',
+      mediaUrl,
+      '-t',
+      '1',
+      '-f',
+      's16le',
+      '-ar',
+      '48000',
+      '-ac',
+      '2',
+      'pipe:1',
     ]);
     if (fetched.code === 0 && fetched.stdout.length > 48000) {
       report('ffmpeg fetches a track', true, `${Math.round(fetched.stdout.length / 1024)} KB read`);
     } else {
-      report('ffmpeg fetches a track', false, fetched.stderr.split('\n').filter(Boolean).pop() ?? '');
+      report(
+        'ffmpeg fetches a track',
+        false,
+        fetched.stderr.split('\n').filter(Boolean).pop() ?? '',
+      );
       console.log('      https works but this host refused the request. Report the line above,');
       console.log('      and try the ffmpeg your distribution builds:');
       console.log('        sudo apt install -y ffmpeg');
@@ -289,7 +329,11 @@ if (online && existsSync(new URL('audioStream.js', distDir))) {
     });
 
     const ok = bytes > 48000;
-    report('player fetches a track', ok, ok ? `${Math.round(bytes / 1024)} KB of PCM` : stream.lastError() || 'no audio');
+    report(
+      'player fetches a track',
+      ok,
+      ok ? `${Math.round(bytes / 1024)} KB of PCM` : stream.lastError() || 'no audio',
+    );
     if (!ok) {
       const names = Object.keys(info.headers ?? {});
       console.log(`      The plain fetch above worked, so the difference is in what the player`);

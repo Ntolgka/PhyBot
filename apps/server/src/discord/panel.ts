@@ -9,7 +9,7 @@ import { historyRepository } from '../db/repositories/misc.js';
 import { stateRepository } from '../db/repositories/state.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { playerManager } from '../music/manager.js';
-import { musicControls, panelEmbed, replayOneControls, type CardTarget } from './embeds.js';
+import { musicControls, panelEmbed, replayControls, type CardTarget } from './embeds.js';
 import { tryGetClient } from './client.js';
 
 const log = createLogger('panel');
@@ -273,7 +273,7 @@ async function demoteMessage(location: PanelLocation): Promise<void> {
   if (!channel) return;
   try {
     await channel.messages.edit(location.messageId, {
-      components: replayOneControls({
+      components: replayControls({
         historyId: location.historyId,
         collectionId: location.collectionId,
       }),

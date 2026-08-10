@@ -4,7 +4,7 @@ import {
   musicControls,
   panelEmbed,
   queueBrowser,
-  replayOneControls,
+  replayControls,
   MUSIC_BUTTONS,
   QUEUE_PAGE_SIZE,
   REPLAY_ONE_PREFIX,
@@ -207,26 +207,27 @@ describe('a playlist card replays the whole playlist', () => {
   });
 
   it('replays the playlist from a demoted card too', () => {
-    const button = replayOneControls({ historyId: 7, collectionId: 3 })[0]?.toJSON()
-      .components[0];
+    const button = replayControls({ historyId: 7, collectionId: 3 })[0]?.toJSON().components[0];
     expect(button?.custom_id).toBe(`${REPLAY_LIST_PREFIX}3`);
   });
 });
 
-describe('replayOneControls', () => {
+describe('replayControls', () => {
   it('binds the button to one stored play', () => {
-    const button = replayOneControls({ historyId: 42 })[0]?.toJSON().components[0];
+    const button = replayControls({ historyId: 42 })[0]?.toJSON().components[0];
     expect(button?.custom_id).toBe(`${REPLAY_ONE_PREFIX}42`);
     expect(button?.disabled).toBeFalsy();
   });
 
   it('stays inside the Discord custom id limit for any plausible id', () => {
-    const button = replayOneControls(9_007_199_254_740_991)[0]?.toJSON().components[0];
-    expect((button?.custom_id ?? '').length).toBeLessThanOrEqual(100);
+    const song = replayControls({ historyId: 9_007_199_254_740_991 })[0]?.toJSON().components[0];
+    expect((song?.custom_id ?? '').length).toBeLessThanOrEqual(100);
+    const list = replayControls({ collectionId: 9_007_199_254_740_991 })[0]?.toJSON().components[0];
+    expect((list?.custom_id ?? '').length).toBeLessThanOrEqual(100);
   });
 
   it('is the only control left on a finished card', () => {
-    expect(replayOneControls(1)).toHaveLength(1);
-    expect(replayOneControls(1)[0]?.toJSON().components).toHaveLength(1);
+    expect(replayControls({ historyId: 1 })).toHaveLength(1);
+    expect(replayControls({ historyId: 1 })[0]?.toJSON().components).toHaveLength(1);
   });
 });
