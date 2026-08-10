@@ -161,6 +161,37 @@ async function loadIndexes(): Promise<number[]> {
   return values;
 }
 
+/**
+ * Fetches one specific post. The number is the one in the site's own address,
+ * so `/turksigara 142` and turksigara.net/142 are the same picture.
+ */
+export async function postByIndex(index: number): Promise<TurksigaraPost> {
+  if (!Number.isInteger(index) || index <= 0) {
+    throw new ExternalServiceError('turksigara', 'Gonderi numarasi 1 veya daha buyuk olmali');
+  }
+
+  let html: string;
+  try {
+    html = await fetchText(String(index));
+  } catch (error) {
+    // A number past the end of the archive answers 404. That is the user asking
+    // for something that does not exist, not the site being unreachable, so it
+    // is worth saying which numbers do work.
+    if (!(error instanceof ExternalServiceError) || !error.message.includes('404')) throw error;
+    const highest = (await loadIndexes()).at(-1);
+    throw new ExternalServiceError(
+      'turksigara',
+      highest === undefined
+        ? `#${index} diye bir gonderi yok`
+        : `#${index} diye bir gonderi yok, en buyuk numara #${highest}`,
+    );
+  }
+
+  const post = parsePost(html, index);
+  if (!post) throw new ExternalServiceError('turksigara', `#${index} icin gorsel bulunamadi`);
+  return post;
+}
+
 /** Fetches one post at random, the way the site's own "rastgele" button does. */
 export async function randomPost(): Promise<TurksigaraPost> {
   const indexes = await loadIndexes();

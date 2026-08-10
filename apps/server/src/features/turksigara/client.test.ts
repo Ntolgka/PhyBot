@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArchiveIndexes, parsePost, toPunycodeHost } from './client.js';
+import { parseArchiveIndexes, parsePost, postByIndex, toPunycodeHost } from './client.js';
 
 describe('toPunycodeHost', () => {
   it('rewrites the host the site advertises', () => {
@@ -90,5 +90,12 @@ describe('parsePost', () => {
 
   it('returns null when the page has no image at all', () => {
     expect(parsePost('<html><body>404</body></html>', 1)).toBeNull();
+  });
+});
+
+describe('postByIndex', () => {
+  // Rejected before any request, so a mistyped number never reaches the site.
+  it.each([0, -3, 1.5, Number.NaN])('refuses %s without asking the site', async (value) => {
+    await expect(postByIndex(value)).rejects.toThrow(/1 veya daha buyuk/);
   });
 });

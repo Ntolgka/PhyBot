@@ -1,23 +1,30 @@
 import { AttachmentBuilder, SlashCommandBuilder } from 'discord.js';
 import { truncate } from '@phybot/shared';
-import { fetchImage, randomPost } from '../../features/turksigara/client.js';
+import { fetchImage, postByIndex, randomPost } from '../../features/turksigara/client.js';
 import { baseEmbed } from '../embeds.js';
 import { respond } from '../reply.js';
 import type { BotCommand } from './types.js';
 
 const turksigaraCommand: BotCommand = {
   category: 'Fun',
-  usage: '/turksigara',
+  usage: '/turksigara [numara]',
   data: new SlashCommandBuilder()
     .setName('turksigara')
-    .setDescription('Rastgele bir türksigara.net görseli gönderir'),
+    .setDescription('Rastgele bir türksigara.net görseli gönderir')
+    .addIntegerOption((option) =>
+      option
+        .setName('numara')
+        .setDescription('Belirli bir gönderi numarası, boş bırakılırsa rastgele')
+        .setMinValue(1),
+    ),
   async execute({ interaction }) {
     // The archive fetch plus the post fetch can take a couple of seconds.
     await interaction.deferReply();
-    const post = await randomPost();
+    const requested = interaction.options.getInteger('numara');
+    const post = requested === null ? await randomPost() : await postByIndex(requested);
 
     const embed = baseEmbed()
-      .setAuthor({ name: 'türksigara.net' })
+      .setAuthor({ name: 'türksigara.net', url: post.pageUrl })
       .setTitle(`#${post.index}`)
       .setURL(post.pageUrl)
       .setDescription(truncate(post.title, 300));

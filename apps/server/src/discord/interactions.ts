@@ -19,7 +19,7 @@ import { commandRegistry } from './commands/index.js';
 import { handleFluxButton, handleFluxSelect } from './commands/imagine.js';
 import { buildLyricsEmbed } from './commands/lyrics.js';
 import { executeSoundCommand, findSoundCommand } from './commands/soundboard.js';
-import { hasPermission, permissionMessage } from './commands/helpers.js';
+import { hasPermission, permissionMessage, resolveMember } from './commands/helpers.js';
 import {
   errorEmbed,
   musicControls,
@@ -83,7 +83,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const settings = settingsRepository.get(interaction.guild.id);
   const command = commandRegistry.get(interaction.commandName);
 
@@ -121,7 +121,7 @@ async function runCustomCommand(interaction: ChatInputCommandInteraction): Promi
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const rendered = renderCustomCommand(custom, member);
   if (!rendered.allowed || !rendered.message) {
     await interaction.reply({
@@ -197,7 +197,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const settings = settingsRepository.get(interaction.guild.id);
   if (!hasPermission(member, settings, 'dj')) {
     await interaction.reply({
@@ -327,7 +327,7 @@ async function handleQueuePick(interaction: StringSelectMenuInteraction): Promis
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const settings = settingsRepository.get(interaction.guild.id);
   if (!hasPermission(member, settings, 'dj')) {
     await interaction.reply({
@@ -366,7 +366,7 @@ async function replayStoredTrack(interaction: ButtonInteraction, historyId: numb
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const voiceChannelId =
     member.voice.channelId ?? playerManager.get(interaction.guild.id)?.channelId;
   if (!voiceChannelId) {
@@ -407,7 +407,7 @@ async function replayCollection(interaction: ButtonInteraction, id: number): Pro
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const voiceChannelId =
     member.voice.channelId ?? playerManager.get(interaction.guild.id)?.channelId;
   if (!voiceChannelId) {
@@ -459,7 +459,7 @@ async function replayLastTrack(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const voiceChannelId = member.voice.channelId;
   if (!voiceChannelId) {
     await interaction.reply({

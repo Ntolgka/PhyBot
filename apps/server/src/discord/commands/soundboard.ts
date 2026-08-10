@@ -5,7 +5,7 @@ import { soundRepository } from '../../soundboard/repository.js';
 import { playSound } from '../../soundboard/service.js';
 import { errorEmbed, infoEmbed, successEmbed } from '../embeds.js';
 import { embedReply, respond } from '../reply.js';
-import { requireVoiceChannel } from './helpers.js';
+import { requireVoiceChannel, resolveMember } from './helpers.js';
 import type { BotCommand } from './types.js';
 
 function describeSound(sound: Sound): string {
@@ -115,7 +115,7 @@ export async function executeSoundCommand(
   sound: Sound,
 ): Promise<void> {
   if (!interaction.inGuild() || !interaction.guild) return;
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const member = await resolveMember(interaction, interaction.guild);
   const voiceChannel = requireVoiceChannel(member);
   await playAndReply(interaction, interaction.guild.id, sound, voiceChannel.id, member.id);
 }

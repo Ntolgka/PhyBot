@@ -81,7 +81,8 @@ changing the bot's own name, avatar, banner, description and presence.
 ### Fun
 
 - `/turksigara` posts a random picture from turksigara.net, the way the site's
-  own "rastgele" button works
+  own "rastgele" button works. Give it a number to post that exact one:
+  `/turksigara 142` is the picture at turksigara.net/142
 
 ### Community
 
@@ -377,7 +378,7 @@ them inside Discord.
 | `/freegames [refresh]`                                                                        | Show games that are free right now                         |
 | `/config view\|autorole\|welcome\|goodbye\|freegames\|music-channel\|dj-role\|voice-announce` | Server configuration, including the arrival announcements  |
 | `/ask <message>`, `/listen <on\|off>`, `/say <text> [voice]`                                  | Assistant                                                  |
-| `/turksigara`                                                                                 | Post a random picture from turksigara.net                  |
+| `/turksigara [numara]`                                                                        | Post a picture from turksigara.net, random or by number    |
 | `/help`, `/ping`, `/stats`, `/invite`                                                         | Utility                                                    |
 | `/restart`                                                                                    | Restart the bot after an update (owner only)               |
 

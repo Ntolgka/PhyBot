@@ -1,10 +1,32 @@
-import { PermissionsBitField, type GuildMember, type VoiceBasedChannel } from 'discord.js';
+import {
+  GuildMember,
+  PermissionsBitField,
+  type Guild,
+  type Interaction,
+  type VoiceBasedChannel,
+} from 'discord.js';
 import type { GuildSettings } from '@phybot/shared';
 import { AppError } from '../../core/errors.js';
 import { playerManager } from '../../music/manager.js';
 import type { GuildPlayer } from '../../music/player.js';
 import { config } from '../../core/config.js';
 import type { CommandPermission } from './types.js';
+
+/**
+ * The member who triggered an interaction.
+ *
+ * Discord sends the full member with the interaction, so fetching it again is
+ * an HTTP round trip taken *before* the bot has acknowledged anything - and the
+ * acknowledgement has a three second deadline. When that route is rate limited
+ * the request queues, the deadline passes, and Discord reports "The application
+ * did not respond" before the command's own code has run. The round trip is
+ * kept only for the case the payload cannot cover.
+ */
+export async function resolveMember(interaction: Interaction, guild: Guild): Promise<GuildMember> {
+  return interaction.member instanceof GuildMember
+    ? interaction.member
+    : guild.members.fetch(interaction.user.id);
+}
 
 export function memberVoiceChannel(member: GuildMember): VoiceBasedChannel | null {
   return member.voice.channel ?? null;
