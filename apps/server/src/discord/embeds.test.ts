@@ -144,6 +144,14 @@ describe('panelEmbed when nothing is playing', () => {
     expect(embed.description).toContain('Play again');
   });
 
+  it('shows the cover art of the track it is offering to replay', () => {
+    const art = 'https://example.com/cover.jpg';
+    const embed = panelEmbed(
+      snapshot({ current: null, history: [{ ...track, thumbnail: art }] }),
+    ).toJSON();
+    expect(embed.thumbnail?.url).toBe(art);
+  });
+
   it('falls back to the plain message before anything has played', () => {
     const embed = panelEmbed(snapshot({ current: null, history: [] })).toJSON();
     expect(embed.title).toBe('Nothing is playing');

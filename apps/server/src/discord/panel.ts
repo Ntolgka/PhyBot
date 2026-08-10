@@ -161,7 +161,7 @@ function storedHistory(guildId: string): Track[] {
     url: entry.url,
     duration: entry.duration,
     isLive: false,
-    thumbnail: null,
+    thumbnail: entry.thumbnail,
     // History stores the source as free text; only the label matters here.
     source: (TRACK_SOURCES as readonly string[]).includes(entry.source)
       ? (entry.source as TrackSource)

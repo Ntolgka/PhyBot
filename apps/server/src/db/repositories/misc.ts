@@ -110,6 +110,8 @@ export interface HistoryEntry {
   duration: number;
   requestedBy: string;
   playedAt: number;
+  /** Cover art, or null for plays stored before it was kept. */
+  thumbnail: string | null;
 }
 
 interface HistoryRow {
@@ -122,6 +124,7 @@ interface HistoryRow {
   duration: number;
   requested_by: string;
   played_at: number;
+  thumbnail: string;
 }
 
 function toHistoryEntry(row: HistoryRow): HistoryEntry {
@@ -135,6 +138,7 @@ function toHistoryEntry(row: HistoryRow): HistoryEntry {
     duration: row.duration,
     requestedBy: row.requested_by,
     playedAt: row.played_at,
+    thumbnail: row.thumbnail || null,
   };
 }
 
@@ -142,8 +146,8 @@ export const historyRepository = {
   /** Returns the stored row id, which identifies this exact play. */
   add(guildId: string, track: Track): number {
     return execute(
-      `INSERT INTO play_history (guild_id, title, author, url, source, duration, requested_by, played_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO play_history (guild_id, title, author, url, source, duration, requested_by, played_at, thumbnail)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       guildId,
       track.title,
       track.author,
@@ -152,6 +156,7 @@ export const historyRepository = {
       Math.round(track.duration),
       track.requestedByName,
       Date.now(),
+      track.thumbnail ?? '',
     ).lastInsertRowid;
   },
 

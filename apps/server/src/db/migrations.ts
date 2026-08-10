@@ -253,4 +253,11 @@ export const migrations: Migration[] = [
         ON play_collections (guild_id, added_at DESC);
     `,
   },
+  {
+    version: 9,
+    name: 'keep the cover art so a finished card can still show it',
+    sql: `
+      ALTER TABLE play_history ADD COLUMN thumbnail TEXT NOT NULL DEFAULT '';
+    `,
+  },
 ];
