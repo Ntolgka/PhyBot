@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ChannelType, type Message, type SendableChannels } from 'discord.js';
+import { ChannelType, PermissionsBitField, type Message, type SendableChannels } from 'discord.js';
 import type { PlayerSnapshot, Track, TrackSource } from '@phybot/shared';
 import { TRACK_SOURCES } from '@phybot/shared';
 import { bus } from '../core/bus.js';
@@ -76,6 +76,10 @@ function panelChannelId(guildId: string): string | null {
  * twice - once with the controls and once without.
  */
 export function panelCoversChannel(guildId: string, channelId: string): boolean {
+  // A channel the panel has failed to post in covers nothing. Without this a
+  // command hides its own reply behind a card that never arrives, which leaves
+  // the requester with an ephemeral confirmation and no controls anywhere.
+  if (reportedChannels.has(channelId)) return false;
   return panelChannelId(guildId) === channelId;
 }
 
@@ -94,6 +98,53 @@ async function resolveChannel(channelId: string): Promise<SendableChannels | nul
   } catch {
     return null;
   }
+}
+
+/** Channels already reported as unusable, so one broken panel logs once. */
+const reportedChannels = new Set<string>();
+
+/**
+ * Why the panel cannot be posted, in terms the server owner can act on.
+ *
+ * A panel that cannot post used to fail at debug level, which left the bot
+ * looking like it had simply stopped announcing tracks - and worse, /play still
+ * hid its own reply because it believed the panel was covering the channel. The
+ * extra lookups only run once posting has already failed.
+ */
+async function explainChannelFailure(channelId: string): Promise<string> {
+  const client = tryGetClient();
+  if (!client?.isReady()) return 'the bot is not connected to Discord yet';
+
+  let channel;
+  try {
+    channel = await client.channels.fetch(channelId);
+  } catch {
+    return 'the channel could not be read; it may have been deleted, or the bot cannot see it';
+  }
+  if (!channel) return 'the channel no longer exists';
+  if (channel.type === ChannelType.DM) return 'a direct message cannot hold the panel';
+  if (!channel.isTextBased() || !('guild' in channel)) return 'that channel cannot hold messages';
+
+  const me = channel.guild.members.me;
+  const permissions = me ? channel.permissionsFor(me) : null;
+  const missing = [
+    permissions?.has(PermissionsBitField.Flags.ViewChannel) ? null : 'View Channel',
+    permissions?.has(PermissionsBitField.Flags.SendMessages) ? null : 'Send Messages',
+    permissions?.has(PermissionsBitField.Flags.EmbedLinks) ? null : 'Embed Links',
+  ].filter(Boolean);
+  return missing.length > 0
+    ? `the bot is missing ${missing.join(', ')} in that channel`
+    : 'the channel is not writable';
+}
+
+/** Reports a channel the panel cannot use, once, until it works again. */
+async function reportChannel(guildId: string, channelId: string): Promise<void> {
+  if (reportedChannels.has(channelId)) return;
+  reportedChannels.add(channelId);
+  log.warn(
+    { guildId, channelId },
+    `The music panel cannot be posted: ${await explainChannelFailure(channelId)}`,
+  );
 }
 
 function snapshotFor(guildId: string): PlayerSnapshot | null {
@@ -207,7 +258,7 @@ async function writePanel(guildId: string): Promise<void> {
 
   const channel = await resolveChannel(channelId);
   if (!channel) {
-    log.debug({ guildId, channelId }, 'Music channel is missing or not writable');
+    await reportChannel(guildId, channelId);
     return;
   }
 
@@ -239,6 +290,7 @@ async function writePanel(guildId: string): Promise<void> {
 
   try {
     const message: Message = await channel.send(payload);
+    reportedChannels.delete(channelId);
     rememberPanel(guildId, {
       channelId,
       messageId: message.id,
@@ -250,6 +302,7 @@ async function writePanel(guildId: string): Promise<void> {
     messagesSincePost.set(guildId, 0);
   } catch (error) {
     log.warn({ guildId, channelId }, `Could not post the music panel: ${toErrorMessage(error)}`);
+    await reportChannel(guildId, channelId);
   }
 }
 
@@ -259,8 +312,10 @@ async function writePanel(guildId: string): Promise<void> {
  */
 function currentHistoryId(guildId: string, snapshot: PlayerSnapshot): number | undefined {
   if (!snapshot.current) return undefined;
-  const [latest] = historyRepository.recent(guildId, 1);
-  return latest && latest.url === snapshot.current.url ? latest.id : undefined;
+  // Asked of the manager, which recorded it as the track started. Matching the
+  // newest row by URL used to stand in for this and missed whenever the queue
+  // was rearranged, leaving the card pointing at the song before.
+  return playerManager.currentHistoryId(guildId);
 }
 
 /** Leaves an old card in place, carrying only a Play again for what it showed. */

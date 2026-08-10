@@ -69,7 +69,14 @@ const playCommand: BotCommand = {
         text: `Spotify only shares the first ${result.tracks.length} tracks of a playlist publicly`,
       });
     }
-    await respond(interaction, { embeds: [embed] });
+    // When the panel covers this channel it carries the controls and this reply
+    // is ephemeral. Otherwise this is the only card anyone will see, so it gets
+    // the controls rather than being a dead confirmation.
+    const snapshot = playerManager.get(guild.id)?.snapshot();
+    await respond(interaction, {
+      embeds: [embed],
+      components: !duplicate && snapshot ? musicControls(snapshot) : [],
+    });
   },
 };
 

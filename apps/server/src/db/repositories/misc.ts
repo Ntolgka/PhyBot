@@ -139,8 +139,9 @@ function toHistoryEntry(row: HistoryRow): HistoryEntry {
 }
 
 export const historyRepository = {
-  add(guildId: string, track: Track): void {
-    execute(
+  /** Returns the stored row id, which identifies this exact play. */
+  add(guildId: string, track: Track): number {
+    return execute(
       `INSERT INTO play_history (guild_id, title, author, url, source, duration, requested_by, played_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       guildId,
@@ -151,7 +152,7 @@ export const historyRepository = {
       Math.round(track.duration),
       track.requestedByName,
       Date.now(),
-    );
+    ).lastInsertRowid;
   },
 
   /** One stored play, used by the Play again button left on an older card. */

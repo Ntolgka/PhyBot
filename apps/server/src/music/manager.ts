@@ -21,6 +21,19 @@ export interface PlayerManagerEvents {
 /** Owns one GuildPlayer per guild and republishes their events. */
 class PlayerManager extends EventEmitter<PlayerManagerEvents> {
   private readonly players = new Map<string, GuildPlayer>();
+  /**
+   * The stored play each guild is currently on. The panel used to work this out
+   * by comparing the newest history row's URL against the current track, which
+   * quietly returned nothing whenever the queue was rearranged from the
+   * dashboard - and a card that cannot learn its own id keeps the previous
+   * song's, so Play again replayed the wrong track.
+   */
+  private readonly historyIds = new Map<string, number>();
+
+  /** The stored play a guild is on right now, or undefined between tracks. */
+  currentHistoryId(guildId: string): number | undefined {
+    return this.historyIds.get(guildId);
+  }
 
   get(guildId: string): GuildPlayer | null {
     const player = this.players.get(guildId);
@@ -89,7 +102,7 @@ class PlayerManager extends EventEmitter<PlayerManagerEvents> {
       bus.emit('player:update', player.snapshot());
     });
     player.on('trackStart', (track) => {
-      historyRepository.add(guildId, track);
+      this.historyIds.set(guildId, historyRepository.add(guildId, track));
       this.emit('trackStart', { guildId, track });
     });
     player.on('trackEnd', (track) => this.emit('trackEnd', { guildId, track }));
@@ -100,6 +113,7 @@ class PlayerManager extends EventEmitter<PlayerManagerEvents> {
     });
     player.on('destroyed', () => {
       this.players.delete(guildId);
+      this.historyIds.delete(guildId);
       bus.emit('player:removed', { guildId });
       this.emit('destroyed', { guildId });
     });
