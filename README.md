@@ -383,9 +383,28 @@ Linux is ffmpeg, which you can also check directly:
 "$(node -e 'process.stdout.write(require("ffmpeg-static"))')" -version
 ```
 
-If ffmpeg reports `Input/output error` while opening the media URL, the signed
-link was issued to one IP family and fetched over the other. Set
-`YOUTUBE_FORCE_IPV4=true` in `.env` and restart.
+If ffmpeg reports `Input/output error` while opening the media URL, it reached
+the point of fetching the audio and could not. `npm run doctor` distinguishes the
+two causes, because it resolves a real track and then fetches it.
+
+The bundled ffmpeg is built against gnutls and trusts the system certificate
+store, while yt-dlp carries its own. So resolving a track can succeed while
+fetching it fails, on a minimal install with no certificates present:
+
+```bash
+sudo apt install -y ca-certificates && sudo update-ca-certificates
+```
+
+If that does not help, the distribution's own ffmpeg is built against the
+libraries it ships with, and is the safer choice:
+
+```bash
+sudo apt install -y ffmpeg
+echo "FFMPEG_PATH=$(command -v ffmpeg)" >> .env
+```
+
+The other cause is a signed link issued to one IP family and fetched over the
+other. Set `YOUTUBE_FORCE_IPV4=true` in `.env` and restart.
 
 If the binary itself fails, the usual cause is a musl based distribution such as Alpine,
 because the bundled build needs glibc. Install ffmpeg from the package manager

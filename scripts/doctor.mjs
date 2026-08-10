@@ -177,6 +177,43 @@ for (const name of ['sodium-native', 'libsodium-wrappers', '@noble/ciphers', 'tw
 }
 report('voice encryption', Boolean(cipher), cipher ?? 'none found - voice packets cannot be sent');
 
+// -- ffmpeg over https -----------------------------------------------------
+// The stage that matters most and the one hardest to guess at. ffmpeg-static is
+// built against gnutls, which trusts the system certificate store, while yt-dlp
+// carries its own bundle - so resolving a track can succeed while fetching it
+// fails, and ffmpeg reports that as a bare "Input/output error".
+if (ffmpegPath && ytDlpPath && existsSync(ytDlpPath) && !process.argv.includes('--offline')) {
+  const probe = await run(ytDlpPath, [
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    '--no-color', '--ignore-config', '--no-warnings', '--skip-download',
+    '-f', 'bestaudio', '--print', 'urls',
+  ]);
+  const mediaUrl = String(probe.stdout).trim().split('\n')[0];
+
+  if (probe.code !== 0 || !mediaUrl.startsWith('http')) {
+    report('yt-dlp resolves a track', false, probe.stderr.split('\n').filter(Boolean).pop() ?? '');
+  } else {
+    report('yt-dlp resolves a track', true, 'got a media URL');
+
+    const fetched = await run(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error',
+      '-reconnect', '1', '-reconnect_on_network_error', '1',
+      '-i', mediaUrl, '-t', '1', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
+    ]);
+    if (fetched.code === 0 && fetched.stdout.length > 48000) {
+      report('ffmpeg fetches over https', true, `${Math.round(fetched.stdout.length / 1024)} KB read`);
+    } else {
+      report('ffmpeg fetches over https', false, fetched.stderr.split('\n').filter(Boolean).pop() ?? '');
+      console.log('      ffmpeg can decode local audio but not fetch it. This build uses gnutls,');
+      console.log('      which needs the system certificates:');
+      console.log('        sudo apt install -y ca-certificates && sudo update-ca-certificates');
+      console.log('      If that does not help, use the system ffmpeg instead:');
+      console.log('        sudo apt install -y ffmpeg');
+      console.log('        echo "FFMPEG_PATH=$(command -v ffmpeg)" >> .env');
+    }
+  }
+}
+
 // -- the whole chain -------------------------------------------------------
 if (pcm && encoder) {
   try {
