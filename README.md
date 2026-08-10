@@ -383,28 +383,25 @@ Linux is ffmpeg, which you can also check directly:
 "$(node -e 'process.stdout.write(require("ffmpeg-static"))')" -version
 ```
 
-If ffmpeg reports `Input/output error` while opening the media URL, it reached
-the point of fetching the audio and could not. `npm run doctor` distinguishes the
-two causes, because it resolves a real track and then fetches it.
+If ffmpeg reports `Input/output error` while opening the media URL, it got as far
+as fetching the audio and could not. ffmpeg reports every such failure with that
+one message, so `doctor` separates them: it opens an unrelated https URL, then
+resolves a real track and fetches it with the same user agent the player uses.
 
-The bundled ffmpeg is built against gnutls and trusts the system certificate
-store, while yt-dlp carries its own. So resolving a track can succeed while
-fetching it fails, on a minimal install with no certificates present:
-
-```bash
-sudo apt install -y ca-certificates && sudo update-ca-certificates
-```
-
-If that does not help, the distribution's own ffmpeg is built against the
-libraries it ships with, and is the safer choice:
+If **`ffmpeg https works`** fails, the bundled build cannot open any https URL on
+this machine and no track can ever play. Use the one your distribution builds,
+which is linked against the libraries it ships with:
 
 ```bash
 sudo apt install -y ffmpeg
 echo "FFMPEG_PATH=$(command -v ffmpeg)" >> .env
 ```
 
-The other cause is a signed link issued to one IP family and fetched over the
-other. Set `YOUTUBE_FORCE_IPV4=true` in `.env` and restart.
+If https works but **`ffmpeg fetches a track`** fails, the connection is fine and
+the media host is refusing that particular request. Two things to try, in order:
+set `YOUTUBE_FORCE_IPV4=true` in `.env`, since the signed link is issued to the
+address that asked for it and yt-dlp and ffmpeg connect separately; then
+`YOUTUBE_COOKIES_FILE`, if the failure is really the bot check in disguise.
 
 If the binary itself fails, the usual cause is a musl based distribution such as Alpine,
 because the bundled build needs glibc. Install ffmpeg from the package manager

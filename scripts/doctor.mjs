@@ -15,6 +15,14 @@ import { existsSync } from 'node:fs';
 const require = createRequire(import.meta.url);
 const results = [];
 
+// Without this the script reports on a different ffmpeg than the bot uses, and
+// FFMPEG_PATH is exactly the setting people reach for when playback is broken.
+try {
+  process.loadEnvFile(new URL('../.env', import.meta.url));
+} catch {
+  // No .env yet, which is fine before the first run.
+}
+
 function report(name, ok, detail) {
   results.push({ name, ok });
   const mark = ok === true ? 'ok  ' : ok === 'warn' ? 'warn' : 'FAIL';
@@ -178,39 +186,109 @@ for (const name of ['sodium-native', 'libsodium-wrappers', '@noble/ciphers', 'tw
 report('voice encryption', Boolean(cipher), cipher ?? 'none found - voice packets cannot be sent');
 
 // -- ffmpeg over https -----------------------------------------------------
-// The stage that matters most and the one hardest to guess at. ffmpeg-static is
-// built against gnutls, which trusts the system certificate store, while yt-dlp
-// carries its own bundle - so resolving a track can succeed while fetching it
-// fails, and ffmpeg reports that as a bare "Input/output error".
-if (ffmpegPath && ytDlpPath && existsSync(ytDlpPath) && !process.argv.includes('--offline')) {
+// Decoding a local tone proves ffmpeg can decode, not that it can fetch, and
+// fetching is the stage that fails when a track ends before it starts. ffmpeg
+// reports every one of those failures as a bare "Input/output error", so the
+// two causes are separated here: TLS that does not work at all, and a media
+// host that refuses this particular request.
+const online = !process.argv.includes('--offline');
+if (ffmpegPath && online) {
+  // Any https host will do. The response is not media, so reaching the point of
+  // complaining about the *content* means the connection itself succeeded.
+  const tls = await run(ffmpegPath, [
+    '-hide_banner', '-loglevel', 'error', '-i', 'https://www.google.com/generate_204', '-f', 'null', '-',
+  ]);
+  const reached = /invalid data|end of file|empty|does not contain/i.test(tls.stderr);
+  if (tls.code === 0 || reached) {
+    report('ffmpeg https works', true, 'connected');
+  } else {
+    report('ffmpeg https works', false, tls.stderr.split('\n').filter(Boolean).pop() ?? '');
+    console.log('      ffmpeg cannot open any https URL, so no track can ever be fetched.');
+    console.log('      Use the ffmpeg your distribution builds instead:');
+    console.log('        sudo apt install -y ffmpeg');
+    console.log('        echo "FFMPEG_PATH=$(command -v ffmpeg)" >> .env');
+  }
+}
+
+if (ffmpegPath && ytDlpPath && existsSync(ytDlpPath) && online) {
+  // A media URL is signed for the client that asked for it, so the request has
+  // to carry the same user agent yt-dlp used. Fetching without it answers a
+  // different question than the one being asked.
   const probe = await run(ytDlpPath, [
     'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     '--no-color', '--ignore-config', '--no-warnings', '--skip-download',
-    '-f', 'bestaudio', '--print', 'urls',
+    '-f', 'bestaudio', '--print', 'urls', '--print', '%(http_headers.User-Agent)s',
   ]);
-  const mediaUrl = String(probe.stdout).trim().split('\n')[0];
+  const [mediaUrl = '', userAgent = ''] = String(probe.stdout).trim().split('\n');
 
   if (probe.code !== 0 || !mediaUrl.startsWith('http')) {
     report('yt-dlp resolves a track', false, probe.stderr.split('\n').filter(Boolean).pop() ?? '');
   } else {
-    report('yt-dlp resolves a track', true, 'got a media URL');
+    const client = /[?&]c=([A-Z_]+)/.exec(mediaUrl)?.[1];
+    report('yt-dlp resolves a track', true, client ? `client ${client}` : 'got a media URL');
 
+    const args = ['-hide_banner', '-loglevel', 'error', '-reconnect', '1', '-reconnect_on_network_error', '1'];
+    if (userAgent && userAgent !== 'NA') args.push('-user_agent', userAgent);
     const fetched = await run(ffmpegPath, [
-      '-hide_banner', '-loglevel', 'error',
-      '-reconnect', '1', '-reconnect_on_network_error', '1',
-      '-i', mediaUrl, '-t', '1', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
+      ...args, '-i', mediaUrl, '-t', '1', '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
     ]);
     if (fetched.code === 0 && fetched.stdout.length > 48000) {
-      report('ffmpeg fetches over https', true, `${Math.round(fetched.stdout.length / 1024)} KB read`);
+      report('ffmpeg fetches a track', true, `${Math.round(fetched.stdout.length / 1024)} KB read`);
     } else {
-      report('ffmpeg fetches over https', false, fetched.stderr.split('\n').filter(Boolean).pop() ?? '');
-      console.log('      ffmpeg can decode local audio but not fetch it. This build uses gnutls,');
-      console.log('      which needs the system certificates:');
-      console.log('        sudo apt install -y ca-certificates && sudo update-ca-certificates');
-      console.log('      If that does not help, use the system ffmpeg instead:');
+      report('ffmpeg fetches a track', false, fetched.stderr.split('\n').filter(Boolean).pop() ?? '');
+      console.log('      https works but this host refused the request. Report the line above,');
+      console.log('      and try the ffmpeg your distribution builds:');
       console.log('        sudo apt install -y ffmpeg');
       console.log('        echo "FFMPEG_PATH=$(command -v ffmpeg)" >> .env');
     }
+  }
+}
+
+// -- the real player path --------------------------------------------------
+// The checks above build their own ffmpeg command, which is exactly how the
+// first version of this script passed on a machine where playback still failed:
+// a simplified command answers a simplified question. This one runs the
+// player's own code, so nothing can drift between what is tested and what runs.
+const distDir = new URL('../apps/server/dist/music/', import.meta.url);
+if (online && existsSync(new URL('audioStream.js', distDir))) {
+  try {
+    const { fetchPlaybackInfo } = await import(new URL('ytdlp.js', distDir).href);
+    const { createPcmStream } = await import(new URL('audioStream.js', distDir).href);
+    const info = await fetchPlaybackInfo('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    const stream = createPcmStream({ url: info.streamUrl, headers: info.headers });
+
+    const bytes = await new Promise((resolve) => {
+      let total = 0;
+      const stop = setTimeout(() => {
+        stream.destroy();
+        resolve(total);
+      }, 10_000);
+      stream.output.on('data', (chunk) => {
+        total += chunk.length;
+        // A second of PCM is plenty to prove the stream really opened.
+        if (total > 48000 * 2 * 2) {
+          clearTimeout(stop);
+          stream.destroy();
+          resolve(total);
+        }
+      });
+      stream.output.on('close', () => {
+        clearTimeout(stop);
+        resolve(total);
+      });
+    });
+
+    const ok = bytes > 48000;
+    report('player fetches a track', ok, ok ? `${Math.round(bytes / 1024)} KB of PCM` : stream.lastError() || 'no audio');
+    if (!ok) {
+      const names = Object.keys(info.headers ?? {});
+      console.log(`      The plain fetch above worked, so the difference is in what the player`);
+      console.log(`      adds. Headers sent: ${names.join(', ') || '(none)'}`);
+    }
+  } catch (error) {
+    // Missing .env, an unbuilt dist or a resolver failure - none of which is the
+    // audio pipeline itself, so it is reported rather than treated as a failure.
+    report('player fetches a track', 'warn', String(error.message).split('\n')[0].slice(0, 80));
   }
 }
 

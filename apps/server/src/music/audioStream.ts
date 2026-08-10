@@ -15,15 +15,28 @@ const bundledFfmpeg = ffmpegStatic as unknown as string | null;
  * The bundled build is linked against glibc, so it cannot run at all on a musl
  * distribution such as Alpine. FFMPEG_PATH lets those machines use the system
  * package instead, matching how YT_DLP_PATH already works.
+ *
+ * Resolved on first use rather than at import. This module is reached through
+ * the assistant's text to speech, which the entry point imports before the
+ * config module has read .env - so resolving here at import time read an
+ * FFMPEG_PATH that was not set yet and silently fell back to the bundled build.
+ * Only an exported shell variable worked, which is not what .env promises.
  */
-function resolveFfmpeg(): string | null {
-  const override = process.env.FFMPEG_PATH;
-  if (override && existsSync(override)) return override;
-  if (override) log.warn({ path: override }, 'FFMPEG_PATH does not exist, using the bundled build');
-  return bundledFfmpeg;
-}
+let resolved: string | null | undefined;
 
-const ffmpegPath = resolveFfmpeg();
+function resolveFfmpeg(): string | null {
+  if (resolved !== undefined) return resolved;
+  const override = process.env.FFMPEG_PATH;
+  if (override && existsSync(override)) {
+    resolved = override;
+  } else {
+    if (override) {
+      log.warn({ path: override }, 'FFMPEG_PATH does not exist, using the bundled build');
+    }
+    resolved = bundledFfmpeg;
+  }
+  return resolved;
+}
 
 export interface FfmpegStream {
   process: ChildProcess;
@@ -56,6 +69,7 @@ export interface StreamOptions {
  * jump inside a track costs one fast HTTP range request instead of buffering.
  */
 export function createPcmStream(options: StreamOptions): FfmpegStream {
+  const ffmpegPath = resolveFfmpeg();
   if (!ffmpegPath) {
     throw new ExternalServiceError('ffmpeg', 'The bundled ffmpeg binary is missing');
   }
@@ -137,6 +151,7 @@ export function createPcmStream(options: StreamOptions): FfmpegStream {
 
 /** Renders a short audio buffer (used by text-to-speech) into PCM. */
 export function decodeBufferToPcm(input: Buffer): Promise<Buffer> {
+  const ffmpegPath = resolveFfmpeg();
   if (!ffmpegPath) {
     return Promise.reject(
       new ExternalServiceError('ffmpeg', 'The bundled ffmpeg binary is missing'),
