@@ -383,7 +383,11 @@ Linux is ffmpeg, which you can also check directly:
 "$(node -e 'process.stdout.write(require("ffmpeg-static"))')" -version
 ```
 
-If that fails, the usual cause is a musl based distribution such as Alpine,
+If ffmpeg reports `Input/output error` while opening the media URL, the signed
+link was issued to one IP family and fetched over the other. Set
+`YOUTUBE_FORCE_IPV4=true` in `.env` and restart.
+
+If the binary itself fails, the usual cause is a musl based distribution such as Alpine,
 because the bundled build needs glibc. Install ffmpeg from the package manager
 and point `FFMPEG_PATH` in `.env` at it:
 

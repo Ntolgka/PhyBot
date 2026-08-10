@@ -69,8 +69,18 @@ export function createPcmStream(options: StreamOptions): FfmpegStream {
     '1',
     '-reconnect_streamed',
     '1',
+    // A media host that drops the connection while it is being opened used to
+    // end the track instantly with "Input/output error". These two cover the
+    // failure during connect and the transient 5xx, which the plain -reconnect
+    // does not.
+    '-reconnect_on_network_error',
+    '1',
+    '-reconnect_on_http_error',
+    '429,500,502,503,504',
     '-reconnect_delay_max',
     '5',
+    '-rw_timeout',
+    '15000000',
   ];
 
   const headers = options.headers ?? {};

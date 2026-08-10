@@ -52,6 +52,7 @@ const envSchema = z.object({
   SPOTIFY_CLIENT_SECRET: optionalString,
   SPOTIFY_REDIRECT_URI: optionalString,
   YOUTUBE_COOKIES_FILE: optionalString,
+  YOUTUBE_FORCE_IPV4: booleanish.default(false),
   MUSIC_DEFAULT_VOLUME: z.coerce.number().int().min(MIN_VOLUME).max(MAX_VOLUME).default(100),
   MUSIC_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().min(0).max(3600).default(300),
 
@@ -101,6 +102,7 @@ export interface AppConfig {
     /** Where Spotify sends the owner back after linking an account. */
     spotifyRedirectUri: string;
     cookiesFile: string | undefined;
+    forceIpv4: boolean;
     defaultVolume: number;
     idleTimeoutSeconds: number;
   };
@@ -174,6 +176,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         value.SPOTIFY_REDIRECT_URI ??
         `http://${value.WEB_HOST === 'localhost' ? '127.0.0.1' : value.WEB_HOST}:${value.WEB_PORT}/api/spotify/callback`,
       cookiesFile: cookiesFile && existsSync(cookiesFile) ? cookiesFile : undefined,
+      forceIpv4: value.YOUTUBE_FORCE_IPV4,
       defaultVolume: value.MUSIC_DEFAULT_VOLUME,
       idleTimeoutSeconds: value.MUSIC_IDLE_TIMEOUT_SECONDS,
     },

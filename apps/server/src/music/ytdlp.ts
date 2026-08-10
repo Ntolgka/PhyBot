@@ -74,6 +74,13 @@ function withGlobalArgs(args: string[]): string[] {
   if (config.music.cookiesFile) {
     result.unshift('--cookies', config.music.cookiesFile);
   }
+  // A media URL is signed for the address that asked for it. On a machine with
+  // working IPv6, yt-dlp can resolve over one family while ffmpeg connects over
+  // the other, and the host rejects the mismatch as an I/O error. Pinning both
+  // to IPv4 is the usual remedy.
+  if (config.music.forceIpv4) {
+    result.unshift('--force-ipv4');
+  }
   return result;
 }
 

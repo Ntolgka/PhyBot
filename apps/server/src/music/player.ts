@@ -176,11 +176,19 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
           { guildId: this.guild.id, track: finished.title, playedMs: played, detail },
           'Track ended before it started',
         );
+        // The failure only shows once audio is meant to be flowing, which is
+        // after startTrack has returned, so the remaining sources are retried
+        // from here rather than skipping the song outright.
+        if (this.pendingSources.length > 0) {
+          void this.resumeFromNextSource(finished, detail);
+          return;
+        }
         this.lastError = detail;
         this.emit('playbackError', `${finished.title}: ${detail}`);
       } else if (finished) {
         this.emit('trackEnd', finished);
       }
+      this.pendingSources = [];
       void this.advance();
     });
     this.audioPlayer.on('error', (error) => {
@@ -276,15 +284,45 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
     await this.startTrack(next, 0);
   }
 
+  /**
+   * Sources left to try for the track that is loaded, so a stream that dies
+   * after playback has nominally begun can fall through to the next one.
+   */
+  private pendingSources: string[] = [];
+
+  /** Picks up the next source after the current one produced no audio. */
+  private async resumeFromNextSource(track: Track, reason: string): Promise<void> {
+    const next = this.pendingSources.shift();
+    if (!next) return;
+
+    invalidatePlayback(next);
+    log.info({ guildId: this.guild.id, track: track.title, reason }, 'Trying another source');
+    try {
+      await this.playFrom(track, next, this.startOffset);
+    } catch (error) {
+      const detail = toErrorMessage(error);
+      if (this.pendingSources.length > 0) {
+        await this.resumeFromNextSource(track, detail);
+        return;
+      }
+      this.lastError = detail;
+      this.emit('playbackError', `${track.title}: ${detail}`);
+      await this.advance({ force: true });
+    }
+  }
+
   private async startTrack(track: Track, seekSeconds: number): Promise<void> {
     this.stopStream();
     this.setStatus('loading');
     this.startOffset = seekSeconds;
+    this.pendingSources = [];
 
     let lastError = 'No playable source was found';
     try {
-      for (const [index, url] of (await this.startPlan(track)).entries()) {
+      const plan = await this.startPlan(track);
+      for (const [index, url] of plan.entries()) {
         try {
+          this.pendingSources = plan.slice(index + 1);
           await this.playFrom(track, url, seekSeconds);
           return;
         } catch (error) {
