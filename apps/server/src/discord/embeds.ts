@@ -249,17 +249,18 @@ export function panelEmbed(snapshot: PlayerSnapshot): EmbedBuilder {
   }
 
   if (track.thumbnail) embed.setThumbnail(track.thumbnail);
-  embed
-    .setFooter({
-      text: [
-        snapshot.loop !== 'off' ? `Loop: ${snapshot.loop}` : null,
-        snapshot.shuffle ? 'Random order' : null,
-        snapshot.autoplay ? 'Autoplay on' : null,
-      ]
-        .filter(Boolean)
-        .join(' • '),
-    })
-    .setTimestamp(snapshot.updatedAt);
+  // Discord rejects the whole message when a footer is present but its text is
+  // empty, and with nothing looping, shuffling or autoplaying there is nothing
+  // to say. The footer is left off entirely in that case.
+  const status = [
+    snapshot.loop !== 'off' ? `Loop: ${snapshot.loop}` : null,
+    snapshot.shuffle ? 'Random order' : null,
+    snapshot.autoplay ? 'Autoplay on' : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+  if (status) embed.setFooter({ text: status });
+  embed.setTimestamp(snapshot.updatedAt);
   return embed;
 }
 

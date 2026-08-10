@@ -118,6 +118,23 @@ describe('musicControls', () => {
   });
 });
 
+describe('panelEmbed footer', () => {
+  // Discord rejects the entire message when a footer is present but empty,
+  // which took the whole panel down rather than just the footer.
+  it('is left off when there is nothing to report', () => {
+    const embed = panelEmbed(snapshot({ status: 'playing', current: track })).toJSON();
+    expect(embed.footer).toBeUndefined();
+  });
+
+  it('is present and non-empty when something is on', () => {
+    const embed = panelEmbed(
+      snapshot({ status: 'playing', current: track, loop: 'queue', autoplay: true }),
+    ).toJSON();
+    expect(embed.footer?.text).toContain('Loop: queue');
+    expect(embed.footer?.text).toContain('Autoplay on');
+  });
+});
+
 describe('panelEmbed when nothing is playing', () => {
   it('names the track Play again would replay', () => {
     const embed = panelEmbed(snapshot({ current: null, history: [track] })).toJSON();
