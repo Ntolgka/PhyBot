@@ -28,6 +28,12 @@ export interface Track {
    * (Spotify tracks are matched against YouTube at playback time).
    */
   searchQuery?: string;
+  /**
+   * The stored playlist import this track arrived with, when it came from one.
+   * A playlist keeps a single card that is edited as it advances, and that card
+   * replays the whole playlist rather than its last song.
+   */
+  collectionId?: number;
 }
 
 export interface PlayerSnapshot {

@@ -281,22 +281,39 @@ export const MUSIC_BUTTONS = {
 } as const;
 
 export const REPLAY_ONE_PREFIX = 'music:replayone:';
+export const REPLAY_LIST_PREFIX = 'music:replaylist:';
 
 /**
- * The single button left on a song's card once it has finished, bound to that
- * exact play so scrolling back and pressing it replays that song rather than
- * whatever happens to be current.
+ * What a card's Play again should queue. A playlist keeps one card for the
+ * whole import, so its button queues the playlist again; anything else is a
+ * single song and replays just that song.
  */
-export function replayOneControls(historyId: number): ActionRowBuilder<ButtonBuilder>[] {
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${REPLAY_ONE_PREFIX}${historyId}`)
-        .setEmoji('🔂')
-        .setLabel('Play again')
-        .setStyle(ButtonStyle.Secondary),
-    ),
-  ];
+export interface CardTarget {
+  historyId?: number | undefined;
+  collectionId?: number | undefined;
+}
+
+/** The Play again button for a card, bound to whatever that card represents. */
+function replayButton(target: CardTarget): ButtonBuilder {
+  const button = new ButtonBuilder().setStyle(ButtonStyle.Secondary).setEmoji('🔂');
+  if (target.collectionId !== undefined) {
+    return button
+      .setCustomId(`${REPLAY_LIST_PREFIX}${target.collectionId}`)
+      .setLabel('Play playlist again');
+  }
+  if (target.historyId !== undefined) {
+    return button.setCustomId(`${REPLAY_ONE_PREFIX}${target.historyId}`).setLabel('Play again');
+  }
+  return button.setCustomId(MUSIC_BUTTONS.replay).setLabel('Play again');
+}
+
+/**
+ * The single button left on a card once it has finished, bound to that exact
+ * play so scrolling back and pressing it replays that song, or that playlist,
+ * rather than whatever happens to be current.
+ */
+export function replayOneControls(target: CardTarget): ActionRowBuilder<ButtonBuilder>[] {
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(replayButton(target))];
 }
 
 /** Tracks per page in the queue browser; also Discord's select menu maximum. */
@@ -367,20 +384,25 @@ export function queueBrowser(
   return rows;
 }
 
-export function musicControls(snapshot: PlayerSnapshot): ActionRowBuilder<ButtonBuilder>[] {
+export function musicControls(
+  snapshot: PlayerSnapshot,
+  /** What this card represents, so its button replays that and not the newest. */
+  target: CardTarget = {},
+): ActionRowBuilder<ButtonBuilder>[] {
   const disabled = snapshot.current === null;
 
   // With nothing playing there is only one useful thing to press, and a row of
   // greyed out transport buttons is just noise at the bottom of the channel.
   if (disabled) {
+    // Bound to this card's own song or playlist where it is known. The generic
+    // button replays whatever ran most recently, which is the wrong thing as
+    // soon as the card has been scrolled past, and it greys itself out on an
+    // empty history - the two ways "Play again" on an older card failed to do
+    // what it says.
+    const bound = target.collectionId !== undefined || target.historyId !== undefined;
     return [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(MUSIC_BUTTONS.replay)
-          .setEmoji('🔂')
-          .setLabel('Play again')
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(snapshot.history.length === 0),
+        replayButton(target).setDisabled(!bound && snapshot.history.length === 0),
       ),
     ];
   }

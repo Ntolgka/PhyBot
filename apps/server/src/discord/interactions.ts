@@ -9,7 +9,7 @@ import {
 import { SEEK_STEP_SECONDS, truncate, type LoopMode, type PlayerSnapshot } from '@phybot/shared';
 import { AppError, toErrorMessage } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
-import { historyRepository } from '../db/repositories/misc.js';
+import { collectionsRepository, historyRepository } from '../db/repositories/misc.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { handleEventInteraction, handleRolePanelInteraction } from '../features/index.js';
 import { playerManager } from '../music/manager.js';
@@ -33,6 +33,7 @@ import {
   QUEUE_PAGE_SIZE,
   QUEUE_PICK_ID,
   REPLAY_ONE_PREFIX,
+  REPLAY_LIST_PREFIX,
 } from './embeds.js';
 import { isPanelMessage } from './panel.js';
 import { findCustomCommand, renderCustomCommand } from './customCommands.js';
@@ -163,6 +164,12 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   // play rather than replaying whatever is current.
   if (customId.startsWith(REPLAY_ONE_PREFIX)) {
     await replayStoredTrack(interaction, Number(customId.slice(REPLAY_ONE_PREFIX.length)));
+    return;
+  }
+  // The card a finished playlist left behind queues the playlist again, not the
+  // one song it happened to end on.
+  if (customId.startsWith(REPLAY_LIST_PREFIX)) {
+    await replayCollection(interaction, Number(customId.slice(REPLAY_LIST_PREFIX.length)));
     return;
   }
   const player = playerManager.get(interaction.guild.id);
@@ -380,6 +387,55 @@ async function replayStoredTrack(interaction: ButtonInteraction, historyId: numb
   });
   await respond(interaction, {
     embeds: [successEmbed(`Queued **${truncate(entry.title, 80)}**.`)],
+  });
+}
+
+/**
+ * Queues an imported playlist again from the card it left behind. The stored
+ * request is re-resolved rather than replayed from stored tracks, so a playlist
+ * that has changed since comes back as it is now.
+ */
+async function replayCollection(interaction: ButtonInteraction, id: number): Promise<void> {
+  if (!interaction.guild) return;
+
+  const collection = Number.isInteger(id) ? collectionsRepository.byId(id) : null;
+  if (!collection || collection.guildId !== interaction.guild.id) {
+    await interaction.reply({
+      embeds: [errorEmbed('That playlist is no longer available.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const voiceChannelId =
+    member.voice.channelId ?? playerManager.get(interaction.guild.id)?.channelId;
+  if (!voiceChannelId) {
+    await interaction.reply({
+      embeds: [errorEmbed('Join a voice channel first.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Re-importing a playlist can take a while, so the acknowledgement goes out
+  // before the resolve rather than after it.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const result = await play({
+    guildId: interaction.guild.id,
+    query: collection.url,
+    requester: { id: member.id, name: member.displayName },
+    voiceChannelId,
+    textChannelId: interaction.channelId,
+  });
+  await respond(interaction, {
+    embeds: [
+      successEmbed(
+        `Queued **${truncate(result.playlistName ?? collection.title, 80)}** — ${result.added} track${
+          result.added === 1 ? '' : 's'
+        }.`,
+      ),
+    ],
   });
 }
 

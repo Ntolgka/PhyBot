@@ -130,6 +130,9 @@ function formatIssues(error: z.ZodError): string {
     .join('\n');
 }
 
+/** Addresses that mean "listen everywhere" and cannot be dialled by a browser. */
+const WILDCARD_HOSTS = new Set(['localhost', '0.0.0.0', '::', '[::]']);
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
@@ -171,10 +174,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       spotifyClientId: value.SPOTIFY_CLIENT_ID,
       spotifyClientSecret: value.SPOTIFY_CLIENT_SECRET,
       // Spotify only accepts loopback addresses over plain http, so the
-      // default is built from the dashboard host and port.
+      // default is built from the dashboard host and port. A wildcard bind is
+      // a listening address rather than one a browser can be sent to, so it
+      // falls back to loopback as well; opening the dashboard from another
+      // machine means setting SPOTIFY_REDIRECT_URI explicitly.
       spotifyRedirectUri:
         value.SPOTIFY_REDIRECT_URI ??
-        `http://${value.WEB_HOST === 'localhost' ? '127.0.0.1' : value.WEB_HOST}:${value.WEB_PORT}/api/spotify/callback`,
+        `http://${WILDCARD_HOSTS.has(value.WEB_HOST) ? '127.0.0.1' : value.WEB_HOST}:${value.WEB_PORT}/api/spotify/callback`,
       cookiesFile: cookiesFile && existsSync(cookiesFile) ? cookiesFile : undefined,
       forceIpv4: value.YOUTUBE_FORCE_IPV4,
       defaultVolume: value.MUSIC_DEFAULT_VOLUME,

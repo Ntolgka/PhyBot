@@ -237,4 +237,20 @@ export const migrations: Migration[] = [
       ALTER TABLE guild_settings ADD COLUMN voice_announce_enabled INTEGER NOT NULL DEFAULT 1;
     `,
   },
+  {
+    version: 8,
+    name: 'remember imported playlists so a finished one can be replayed whole',
+    sql: `
+      CREATE TABLE IF NOT EXISTS play_collections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        track_count INTEGER NOT NULL,
+        added_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_play_collections_guild
+        ON play_collections (guild_id, added_at DESC);
+    `,
+  },
 ];

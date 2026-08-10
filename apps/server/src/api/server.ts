@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -142,6 +143,14 @@ export async function buildServer(): Promise<FastifyInstance> {
   return app;
 }
 
+/** IPv4 addresses another machine on the network can actually reach. */
+function lanAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((entry) => entry && entry.family === 'IPv4' && !entry.internal)
+    .map((entry) => entry!.address);
+}
+
 export async function startApiServer(): Promise<FastifyInstance> {
   if (!config.web.password && !config.web.allowInsecure) {
     log.warn(
@@ -159,6 +168,12 @@ export async function startApiServer(): Promise<FastifyInstance> {
 
   const app = await buildServer();
   await app.listen({ host: config.web.host, port: config.web.port });
-  log.info(`Dashboard and API ready on http://${config.web.host}:${config.web.port}`);
+
+  // A wildcard bind is an instruction to the socket, not an address a browser
+  // can open, so the reachable ones are named instead.
+  const wildcard = ['0.0.0.0', '::', '[::]'].includes(config.web.host);
+  const addresses = wildcard ? lanAddresses() : [config.web.host];
+  const urls = addresses.map((address) => `http://${address}:${config.web.port}`);
+  log.info(`Dashboard and API ready on ${urls.join(' , ') || `port ${config.web.port}`}`);
   return app;
 }

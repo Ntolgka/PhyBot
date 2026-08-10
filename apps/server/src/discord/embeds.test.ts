@@ -8,6 +8,7 @@ import {
   MUSIC_BUTTONS,
   QUEUE_PAGE_SIZE,
   REPLAY_ONE_PREFIX,
+  REPLAY_LIST_PREFIX,
 } from './embeds.js';
 
 const track: Track = {
@@ -75,6 +76,19 @@ describe('musicControls', () => {
   it('disables Play again when there is no history to replay', () => {
     const [row] = musicControls(snapshot({ current: null, history: [] }));
     expect(row?.toJSON().components[0]?.disabled).toBe(true);
+  });
+
+  it('binds Play again to the song the card is showing', () => {
+    const [row] = musicControls(snapshot({ current: null, history: [track] }), { historyId: 7 });
+    const button = row?.toJSON().components[0];
+    expect(button?.custom_id).toBe(`${REPLAY_ONE_PREFIX}7`);
+  });
+
+  it('keeps Play again usable on an old card even with no history loaded', () => {
+    // An older card is read straight from the channel, where the snapshot it
+    // was built from is long gone. It must still replay its own song.
+    const [row] = musicControls(snapshot({ current: null, history: [] }), { historyId: 7 });
+    expect(row?.toJSON().components[0]?.disabled).toBe(false);
   });
 
   it('offers the queue browser with its size, and disables it when empty', () => {
@@ -181,9 +195,27 @@ describe('the panel offers the lyrics', () => {
   });
 });
 
+describe('a playlist card replays the whole playlist', () => {
+  it('binds the idle button to the collection, not its last song', () => {
+    const [row] = musicControls(snapshot({ current: null, history: [track] }), {
+      historyId: 7,
+      collectionId: 3,
+    });
+    const button = row?.toJSON().components[0];
+    expect(button?.custom_id).toBe(`${REPLAY_LIST_PREFIX}3`);
+    expect(button?.disabled).toBe(false);
+  });
+
+  it('replays the playlist from a demoted card too', () => {
+    const button = replayOneControls({ historyId: 7, collectionId: 3 })[0]?.toJSON()
+      .components[0];
+    expect(button?.custom_id).toBe(`${REPLAY_LIST_PREFIX}3`);
+  });
+});
+
 describe('replayOneControls', () => {
   it('binds the button to one stored play', () => {
-    const button = replayOneControls(42)[0]?.toJSON().components[0];
+    const button = replayOneControls({ historyId: 42 })[0]?.toJSON().components[0];
     expect(button?.custom_id).toBe(`${REPLAY_ONE_PREFIX}42`);
     expect(button?.disabled).toBeFalsy();
   });

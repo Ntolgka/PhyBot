@@ -186,9 +186,56 @@ Two things to expect on a Pi:
 - **Skip `npm run flux:setup`.** Local image generation needs about 5 GB of
   model weights and a GPU; `/imagine` and `/edit` will report that the engine is
   not installed and everything else carries on working.
-- To reach the dashboard from another machine, set `WEB_HOST=0.0.0.0` in `.env`.
-  The bot refuses to listen on anything but localhost until `DASHBOARD_PASSWORD`
-  is set, which is deliberate.
+- The dashboard listens on localhost only. See the section below to reach it
+  from another machine.
+
+## Reaching the dashboard from another machine
+
+The dashboard listens on `127.0.0.1` by default, so it is only reachable from the
+machine running the bot. To open it from another computer on the same network,
+set both of these in `.env`:
+
+```
+WEB_HOST=0.0.0.0
+DASHBOARD_PASSWORD=something-long-and-private
+```
+
+The password is not optional. The bot refuses to start while listening on a
+non-loopback address without one, because that address is reachable by anything
+on the network.
+
+If the address does not change after editing `.env`, something else is already
+setting it. **A variable that is already in the environment wins over `.env`** -
+a `WEB_HOST` in a systemd unit, a shell export or a login script silently
+overrides the file. `npm run doctor` reports which value is in effect and names
+the disagreement. To see it directly:
+
+```bash
+systemctl cat phybot | grep -i web_host
+printenv WEB_HOST
+```
+
+On startup the log names the URL to open, rather than the wildcard it bound to:
+
+```
+Dashboard and API ready on http://192.168.0.106:8420
+```
+
+Two things that are easy to miss:
+
+- **The firewall**, on Windows: allow the port for private networks the first
+  time it prompts. Debian and Raspberry Pi OS ship no firewall at all, so there
+  is usually nothing to open there - `ufw: command not found` means it is not
+  installed and therefore not blocking. Only if it is installed and active:
+  `sudo ufw allow 8420`.
+- **Spotify sign in still has to be done on the machine running the bot,** since
+  Spotify only accepts loopback addresses over plain http. Everything else in the
+  dashboard works from any machine. To sign in remotely you need a real hostname
+  and `SPOTIFY_REDIRECT_URI` set to match it.
+
+Only expose the dashboard to a network you trust. It has no HTTPS of its own, so
+the password crosses the network in the clear; for access from outside the house,
+put it behind a reverse proxy with a certificate, or a VPN.
 
 ## Discord application setup
 

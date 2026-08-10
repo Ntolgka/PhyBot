@@ -9,7 +9,7 @@ import { historyRepository } from '../db/repositories/misc.js';
 import { stateRepository } from '../db/repositories/state.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { playerManager } from '../music/manager.js';
-import { musicControls, panelEmbed, replayOneControls } from './embeds.js';
+import { musicControls, panelEmbed, replayOneControls, type CardTarget } from './embeds.js';
 import { tryGetClient } from './client.js';
 
 const log = createLogger('panel');
@@ -35,6 +35,8 @@ interface PanelLocation {
   messageId: string;
   /** The play this card is showing, so it can be left behind as replayable. */
   historyId?: number;
+  /** Set when the card belongs to a playlist import, which it replays whole. */
+  collectionId?: number;
 }
 
 type PanelState = Record<string, PanelLocation>;
@@ -169,13 +171,39 @@ async function writePanel(guildId: string): Promise<void> {
 
   const live = snapshotFor(guildId);
   const snapshot = live ? withStoredHistory(guildId, live) : idleSnapshot(guildId);
-  const payload = { embeds: [panelEmbed(snapshot)], components: musicControls(snapshot) };
 
   const existing = readState()[guildId];
+  // What this card stands for. While something is playing that is the live
+  // track, or the playlist it arrived with; once playback stops the card keeps
+  // whatever it last showed, so its Play again still points at its own song
+  // rather than at whatever the server played most recently.
+  const target: CardTarget = snapshot.current
+    ? {
+        historyId: currentHistoryId(guildId, snapshot),
+        collectionId: snapshot.current.collectionId,
+      }
+    : { historyId: existing?.historyId, collectionId: existing?.collectionId };
+
+  const payload = {
+    embeds: [panelEmbed(snapshot)],
+    components: musicControls(snapshot, target),
+  };
+
+  // A playlist keeps one card for its whole run, edited as it advances. Songs
+  // queued individually get a card each, so every one of them is left behind
+  // with a button that replays that song.
+  const sameCard =
+    existing !== undefined &&
+    (target.collectionId !== undefined
+      ? existing.collectionId === target.collectionId
+      : existing.collectionId === undefined &&
+        (target.historyId === undefined || existing.historyId === target.historyId));
+
   const shouldRepost =
     repostWanted.delete(guildId) ||
     (messagesSincePost.get(guildId) ?? 0) >= REPOST_AFTER_MESSAGES ||
-    existing?.channelId !== channelId;
+    existing?.channelId !== channelId ||
+    !sameCard;
 
   const channel = await resolveChannel(channelId);
   if (!channel) {
@@ -186,21 +214,26 @@ async function writePanel(guildId: string): Promise<void> {
   if (existing && !shouldRepost) {
     try {
       await channel.messages.edit(existing.messageId, payload);
+      // A playlist card is edited song after song, so the play it is showing
+      // has to move with it. Without this the card keeps the id it was posted
+      // with and, left behind later, offers the playlist's first song.
+      if (target.historyId !== undefined && target.historyId !== existing.historyId) {
+        rememberPanel(guildId, { ...existing, historyId: target.historyId });
+      }
       return;
     } catch (error) {
       log.debug({ guildId }, `Panel message could not be edited: ${toErrorMessage(error)}`);
     }
   }
 
-  const historyId = currentHistoryId(guildId, snapshot);
-
   if (existing) {
-    // A card for a song that has finished stays in the channel with its own
-    // Play again, so scrolling back through the evening still lets any of those
-    // songs be replayed. Reposts for any other reason (chatter pushing it out
-    // of sight) would only duplicate the same song, so those are removed.
-    const finished = existing.historyId !== undefined && existing.historyId !== historyId;
-    if (finished) await demoteMessage(existing);
+    // A card for something that has finished stays in the channel with its own
+    // Play again, so scrolling back through the evening lets any of those songs
+    // or playlists be replayed. A repost for any other reason (chatter pushing
+    // the card out of sight) is the same card moving down, so that one is
+    // removed rather than duplicated.
+    const replayable = existing.historyId !== undefined || existing.collectionId !== undefined;
+    if (!sameCard && replayable) await demoteMessage(existing);
     else await deleteMessage(existing);
   }
 
@@ -209,7 +242,10 @@ async function writePanel(guildId: string): Promise<void> {
     rememberPanel(guildId, {
       channelId,
       messageId: message.id,
-      ...(historyId !== undefined ? { historyId } : {}),
+      // What the card stands for, so it can be left behind replayable rather
+      // than deleted once something else takes its place.
+      ...(target.historyId !== undefined ? { historyId: target.historyId } : {}),
+      ...(target.collectionId !== undefined ? { collectionId: target.collectionId } : {}),
     });
     messagesSincePost.set(guildId, 0);
   } catch (error) {
@@ -227,9 +263,9 @@ function currentHistoryId(guildId: string, snapshot: PlayerSnapshot): number | u
   return latest && latest.url === snapshot.current.url ? latest.id : undefined;
 }
 
-/** Leaves an old card in place, carrying only a Play again for its own song. */
+/** Leaves an old card in place, carrying only a Play again for what it showed. */
 async function demoteMessage(location: PanelLocation): Promise<void> {
-  if (location.historyId === undefined) {
+  if (location.historyId === undefined && location.collectionId === undefined) {
     await deleteMessage(location);
     return;
   }
@@ -237,7 +273,10 @@ async function demoteMessage(location: PanelLocation): Promise<void> {
   if (!channel) return;
   try {
     await channel.messages.edit(location.messageId, {
-      components: replayOneControls(location.historyId),
+      components: replayOneControls({
+        historyId: location.historyId,
+        collectionId: location.collectionId,
+      }),
     });
   } catch (error) {
     log.debug({ messageId: location.messageId }, `Could not demote: ${toErrorMessage(error)}`);

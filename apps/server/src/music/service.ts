@@ -2,6 +2,7 @@ import { ChannelType, PermissionsBitField, type Guild, type VoiceBasedChannel } 
 import type { ResolvedRequest, Track } from '@phybot/shared';
 import { MAX_PLAYLIST_IMPORT, shuffled } from '@phybot/shared';
 import { AppError, NotFoundError } from '../core/errors.js';
+import { collectionsRepository } from '../db/repositories/misc.js';
 import { getClient } from '../discord/client.js';
 import { playerManager } from './manager.js';
 import type { GuildPlayer } from './player.js';
@@ -100,6 +101,20 @@ export async function play(params: PlayParams): Promise<PlayResult> {
   });
 
   const tracks = params.shuffle ? shuffled(resolved.tracks) : resolved.tracks;
+
+  // A collection is recorded only for a genuine multi track import. A search
+  // that happens to report a playlist name, or a link to one song inside a
+  // playlist, is a single song and gets its own card like any other.
+  if (resolved.playlistName && tracks.length > 1) {
+    const collectionId = collectionsRepository.add(
+      params.guildId,
+      params.query,
+      resolved.playlistName,
+      tracks.length,
+    );
+    for (const track of tracks) track.collectionId = collectionId;
+  }
+
   const player = await playerManager.join(guild, voiceChannel, params.textChannelId ?? null);
   const wasIdle = player.queue.current === null;
   const result = await player.enqueue(tracks, { next: params.next ?? false });

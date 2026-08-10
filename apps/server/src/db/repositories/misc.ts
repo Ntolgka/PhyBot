@@ -182,3 +182,52 @@ export const historyRepository = {
     );
   },
 };
+
+export interface PlayCollection {
+  id: number;
+  guildId: string;
+  url: string;
+  title: string;
+  trackCount: number;
+}
+
+interface CollectionRow {
+  id: number;
+  guild_id: string;
+  url: string;
+  title: string;
+  track_count: number;
+}
+
+/**
+ * Playlists as they were imported, so the card left behind by a finished
+ * playlist can queue the whole thing again rather than its last song. The
+ * request is stored, not the tracks: replaying re-resolves the playlist, which
+ * is also what makes a playlist that has since changed come back current.
+ */
+export const collectionsRepository = {
+  add(guildId: string, url: string, title: string, trackCount: number): number {
+    return execute(
+      `INSERT INTO play_collections (guild_id, url, title, track_count, added_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      guildId,
+      url,
+      title,
+      trackCount,
+      Date.now(),
+    ).lastInsertRowid;
+  },
+
+  byId(id: number): PlayCollection | null {
+    const row = queryOne<CollectionRow>('SELECT * FROM play_collections WHERE id = ?', id);
+    return row
+      ? {
+          id: row.id,
+          guildId: row.guild_id,
+          url: row.url,
+          title: row.title,
+          trackCount: row.track_count,
+        }
+      : null;
+  },
+};

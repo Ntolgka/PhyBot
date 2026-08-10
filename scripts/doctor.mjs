@@ -10,17 +10,27 @@
  */
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const results = [];
 
 // Without this the script reports on a different ffmpeg than the bot uses, and
 // FFMPEG_PATH is exactly the setting people reach for when playback is broken.
+// What the environment already carries is captured first: loadEnvFile leaves
+// those alone, so the two can disagree and only one of them takes effect.
+const shellHost = process.env.WEB_HOST;
+const envPath = new URL('../.env', import.meta.url);
+let fileHost;
 try {
-  process.loadEnvFile(new URL('../.env', import.meta.url));
+  fileHost = /^\s*WEB_HOST\s*=\s*["']?([^"'\r\n#]+)/m.exec(readFileSync(envPath, 'utf8'))?.[1].trim();
 } catch {
   // No .env yet, which is fine before the first run.
+}
+try {
+  process.loadEnvFile(envPath);
+} catch {
+  // Same.
 }
 
 function report(name, ok, detail) {
@@ -308,6 +318,24 @@ if (pcm && encoder) {
   } catch (error) {
     report('full pipeline', false, String(error.message).split('\n')[0].slice(0, 70));
   }
+}
+
+// -- dashboard binding -----------------------------------------------------
+// .env does not override a variable already in the environment, so a value in a
+// service file or a shell export wins silently. That is worth naming, because
+// the symptom is an .env edit that appears to do nothing at all.
+const host = process.env.WEB_HOST ?? '127.0.0.1';
+const port = process.env.WEB_PORT ?? '8420';
+const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
+report(
+  'dashboard binds',
+  loopback ? 'warn' : true,
+  loopback ? `${host}:${port} - this machine only` : `${host}:${port} - reachable from the network`,
+);
+if (loopback && shellHost && shellHost !== fileHost) {
+  console.log(`      .env asks for ${fileHost}, but the environment already sets`);
+  console.log(`      WEB_HOST=${shellHost} and that wins. Change it where it is set,`);
+  console.log('      or remove it there so .env is used.');
 }
 
 const failed = results.filter((r) => r.ok === false);

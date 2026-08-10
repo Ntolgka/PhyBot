@@ -59,8 +59,6 @@ export interface StreamOptions {
   headers?: Record<string, string>;
   /** Start position in seconds; ffmpeg seeks the input, which is fast. */
   seekSeconds?: number;
-  /** Playback speed multiplier, 1 = normal. */
-  speed?: number;
 }
 
 /**
@@ -108,10 +106,6 @@ export function createPcmStream(options: StreamOptions): FfmpegStream {
   }
 
   args.push('-i', options.url, '-vn', '-sn', '-dn');
-
-  if (options.speed && options.speed !== 1) {
-    args.push('-af', `atempo=${Math.min(2, Math.max(0.5, options.speed)).toFixed(2)}`);
-  }
 
   args.push('-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1');
 
