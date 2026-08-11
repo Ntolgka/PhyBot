@@ -21,6 +21,9 @@ changing the bot's own name, avatar, banner, description and presence.
 - Repeat one track or the whole queue, random order, and autoplay of related
   tracks when the queue runs out
 - Volume control, per-server default volume and idle disconnect timeout
+- Leaves once the channel has been empty for the idle timeout (five minutes by
+  default, set per server), counted separately from being idle with people
+  still in the channel
 - A live music panel in the chosen music channel: the current track, a progress
   bar, the whole queue and working control buttons. Playback changes update the
   card in place, so the queue is always in view at the bottom of the channel

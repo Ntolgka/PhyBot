@@ -76,6 +76,8 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
   private transitioning = false;
   private destroyed = false;
   private emptySince: number | null = null;
+  /** Set while the channel has no listeners, separately from being idle. */
+  private aloneSince: number | null = null;
   /** Last track autoplay used as a seed, kept when the history is trimmed. */
   private lastSeed: Track | null = null;
   /** Set while an assistant reply is being spoken, so it can be interrupted. */
@@ -669,22 +671,40 @@ export class GuildPlayer extends EventEmitter<GuildPlayerEvents> {
 
   // -- housekeeping --------------------------------------------------------
 
-  /** Leaves the voice channel after being alone for the configured time. */
+  /** People in the bot's voice channel, not counting other bots. */
+  private humanListeners(): number {
+    const channel = this.guild.channels.cache.get(this.voiceChannelId);
+    if (!channel?.isVoiceBased()) return 0;
+    return channel.members.filter((member) => !member.user.bot).size;
+  }
+
+  /**
+   * Leaves after the configured timeout, counted separately for the two
+   * reasons to go: nobody is listening, or there is nothing to play. Keeping
+   * one clock each means a listener rejoining does not reset the idle clock,
+   * and music starting does not reset the empty channel one.
+   */
   private checkIdle(): void {
     if (this.destroyed || this.idleTimeoutSeconds <= 0) return;
-    const channel = this.guild.channels.cache.get(this.voiceChannelId);
-    const listeners =
-      channel && channel.isVoiceBased()
-        ? channel.members.filter((member) => !member.user.bot).size
-        : 0;
+    const timeout = this.idleTimeoutSeconds * 1000;
 
-    const idle = listeners === 0 || this.status === 'idle' || this.status === 'stopped';
-    if (!idle) {
+    if (this.humanListeners() === 0) {
+      this.aloneSince ??= Date.now();
+      if (Date.now() - this.aloneSince >= timeout) {
+        log.info({ guildId: this.guild.id }, 'Leaving voice channel, nobody is listening');
+        this.destroy();
+        return;
+      }
+    } else {
+      this.aloneSince = null;
+    }
+
+    if (this.status !== 'idle' && this.status !== 'stopped') {
       this.emptySince = null;
       return;
     }
     this.emptySince ??= Date.now();
-    if (Date.now() - this.emptySince >= this.idleTimeoutSeconds * 1000) {
+    if (Date.now() - this.emptySince >= timeout) {
       log.info({ guildId: this.guild.id }, 'Leaving voice channel after inactivity');
       this.destroy();
     }
