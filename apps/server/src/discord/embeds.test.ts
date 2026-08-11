@@ -10,6 +10,10 @@ import {
   REPLAY_ONE_PREFIX,
   REPLAY_LIST_PREFIX,
   FAVOURITE_PREFIX,
+  FAVOURITE_PLAY_ALL_ID,
+  favouritesControls,
+  favouritesEmbed,
+  type FavouriteLine,
 } from './embeds.js';
 
 const track: Track = {
@@ -279,5 +283,48 @@ describe('the favourite button', () => {
   it('is left off when the card does not know which play it is showing', () => {
     const rows = musicControls(snapshot({ status: 'playing', current: track }));
     expect(ids(rows).some((id) => id.startsWith(FAVOURITE_PREFIX))).toBe(false);
+  });
+});
+
+describe('the favourites card', () => {
+  const many: FavouriteLine[] = Array.from({ length: 30 }, (_, index) => ({
+    id: 100 + index,
+    title: `Fav ${index + 1}`,
+    author: 'Artist',
+    url: `https://example.com/${index}`,
+    duration: 60,
+    thumbnail: null,
+  }));
+
+  function menu(page: number) {
+    const row = favouritesControls(many, page)[0]?.toJSON().components[0];
+    return row && 'options' in row ? (row.options ?? []) : [];
+  }
+
+  it('numbers tracks across the whole list, not the page', () => {
+    expect(favouritesEmbed(many, 0).toJSON().description).toContain('`1.`');
+    expect(favouritesEmbed(many, 1).toJSON().description).toContain('`26.`');
+  });
+
+  it('picks by stored id, so a changed list cannot queue the wrong song', () => {
+    expect(menu(0)[0]).toMatchObject({ label: '1. Fav 1', value: '100' });
+    expect(menu(1)[0]).toMatchObject({ label: '26. Fav 26', value: '125' });
+  });
+
+  it('offers Play all with the full count, not the page count', () => {
+    const buttons = favouritesControls(many, 0).at(-1)?.toJSON().components ?? [];
+    expect(buttons[0]).toMatchObject({ custom_id: FAVOURITE_PLAY_ALL_ID });
+    expect('label' in buttons[0]! ? buttons[0].label : '').toContain('30');
+  });
+
+  it('drops the paging buttons when everything fits on one page', () => {
+    const one = favouritesControls(many.slice(0, 5), 0).at(-1)?.toJSON().components ?? [];
+    expect(one).toHaveLength(1);
+    expect(favouritesControls(many, 0).at(-1)?.toJSON().components).toHaveLength(4);
+  });
+
+  it('explains itself and offers nothing to press when empty', () => {
+    expect(favouritesEmbed([], 0).toJSON().description).toContain('Favourite button');
+    expect(favouritesControls([], 0)).toEqual([]);
   });
 });

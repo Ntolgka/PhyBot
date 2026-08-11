@@ -501,3 +501,127 @@ export function musicControls(
 
   return [primary, secondary, browse];
 }
+
+export const FAVOURITES_PAGE_SIZE = 25;
+
+export const FAVOURITE_PAGE_PREFIX = 'music:favpage:';
+export const FAVOURITE_PLAY_ALL_ID = 'music:favplayall';
+export const FAVOURITE_PICK_ID = 'music:favpick';
+
+/** The minimum a favourites card needs to draw itself. */
+export interface FavouriteLine {
+  id: number;
+  title: string;
+  author: string;
+  url: string;
+  duration: number;
+  thumbnail: string | null;
+}
+
+/** One page of someone's starred tracks, numbered across the whole list. */
+export function favouritesEmbed(entries: FavouriteLine[], page: number): EmbedBuilder {
+  const pages = Math.max(1, Math.ceil(entries.length / FAVOURITES_PAGE_SIZE));
+  const current = Math.min(Math.max(page, 0), pages - 1);
+  const start = current * FAVOURITES_PAGE_SIZE;
+  const slice = entries.slice(start, start + FAVOURITES_PAGE_SIZE);
+
+  const embed = baseEmbed().setAuthor({ name: 'Favourites' });
+  if (entries.length === 0) {
+    return embed.setDescription(
+      'Nothing starred yet. Press the Favourite button on a song card to save it here.',
+    );
+  }
+
+  const total = entries.reduce((sum, entry) => sum + entry.duration, 0);
+  const lines: string[] = [];
+  let used = 0;
+  for (const [index, entry] of slice.entries()) {
+    const line = `\`${start + index + 1}.\` [${truncate(entry.title, 60)}](${entry.url}) \`${formatDuration(entry.duration)}\``;
+    // Same budget guard as the queue: a full page of long titles approaches the
+    // 4096 character limit, and an over-long description fails the whole message.
+    if (used + line.length + 1 > MAX_EMBED_DESCRIPTION - 80) {
+      lines.push(`_and ${slice.length - index} more on this page_`);
+      break;
+    }
+    lines.push(line);
+    used += line.length + 1;
+  }
+
+  embed.setDescription(lines.join('\n')).setFooter({
+    text: `Page ${current + 1}/${pages} • ${entries.length} starred • ${formatDuration(total)} total`,
+  });
+  const cover = slice.find((entry) => entry.thumbnail)?.thumbnail;
+  if (cover) embed.setThumbnail(cover);
+  return embed;
+}
+
+/**
+ * Play all, a picker for a few of them, and paging.
+ *
+ * The picker carries each track's stored id rather than its position, so a
+ * choice cannot land on the wrong song if the list changed between the card
+ * being drawn and the pick being made.
+ */
+export function favouritesControls(
+  entries: FavouriteLine[],
+  page: number,
+): (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] {
+  if (entries.length === 0) return [];
+
+  const pages = Math.max(1, Math.ceil(entries.length / FAVOURITES_PAGE_SIZE));
+  const current = Math.min(Math.max(page, 0), pages - 1);
+  const start = current * FAVOURITES_PAGE_SIZE;
+  const slice = entries.slice(start, start + FAVOURITES_PAGE_SIZE);
+
+  const rows: (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] = [];
+
+  if (slice.length > 0) {
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(FAVOURITE_PICK_ID)
+          .setPlaceholder('Pick the ones to play')
+          .setMinValues(1)
+          .setMaxValues(slice.length)
+          .addOptions(
+            slice.map((entry, index) =>
+              new StringSelectMenuOptionBuilder()
+                .setLabel(truncate(`${start + index + 1}. ${entry.title}`, 100))
+                .setDescription(truncate(entry.author || 'Unknown artist', 100))
+                .setValue(String(entry.id)),
+            ),
+          ),
+      ),
+    );
+  }
+
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(FAVOURITE_PLAY_ALL_ID)
+      .setEmoji('▶')
+      .setLabel(`Play all (${entries.length})`)
+      .setStyle(ButtonStyle.Primary),
+  );
+  if (pages > 1) {
+    buttons.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${FAVOURITE_PAGE_PREFIX}${current - 1}`)
+        .setEmoji('◀')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(current === 0),
+      new ButtonBuilder()
+        .setCustomId(`${FAVOURITE_PAGE_PREFIX}${current}`)
+        .setLabel(`${current + 1}/${pages}`)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId(`${FAVOURITE_PAGE_PREFIX}${current + 1}`)
+        .setEmoji('▶')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(current >= pages - 1),
+    );
+  }
+  rows.push(buttons);
+
+  return rows;
+}

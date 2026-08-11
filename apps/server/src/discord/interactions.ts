@@ -13,13 +13,15 @@ import {
   collectionsRepository,
   favouritesRepository,
   historyRepository,
+  type FavouriteTrack,
 } from '../db/repositories/misc.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { handleEventInteraction, handleRolePanelInteraction } from '../features/index.js';
 import { playerManager } from '../music/manager.js';
-import { play } from '../music/service.js';
+import { enqueueKnownTracks, play } from '../music/service.js';
 import { suggestVoices } from './commands/assistant.js';
 import { commandRegistry } from './commands/index.js';
+import { MAX_FAVOURITES, toTrack } from './commands/favourites.js';
 import { handleFluxButton, handleFluxSelect } from './commands/imagine.js';
 import { buildLyricsEmbed } from './commands/lyrics.js';
 import { executeSoundCommand, findSoundCommand } from './commands/soundboard.js';
@@ -39,6 +41,11 @@ import {
   REPLAY_ONE_PREFIX,
   REPLAY_LIST_PREFIX,
   FAVOURITE_PREFIX,
+  FAVOURITE_PAGE_PREFIX,
+  FAVOURITE_PICK_ID,
+  FAVOURITE_PLAY_ALL_ID,
+  favouritesControls,
+  favouritesEmbed,
 } from './embeds.js';
 import { isPanelMessage } from './panel.js';
 import { findCustomCommand, renderCustomCommand } from './customCommands.js';
@@ -57,7 +64,8 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
       return;
     }
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId.startsWith('music:')) await handleQueuePick(interaction);
+      if (interaction.customId === FAVOURITE_PICK_ID) await handleFavouritePick(interaction);
+      else if (interaction.customId.startsWith('music:')) await handleQueuePick(interaction);
       else await handleFluxSelect(interaction);
       return;
     }
@@ -169,6 +177,22 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   // play rather than replaying whatever is current.
   if (customId.startsWith(REPLAY_ONE_PREFIX)) {
     await replayStoredTrack(interaction, Number(customId.slice(REPLAY_ONE_PREFIX.length)));
+    return;
+  }
+  // The favourites card: its own list, its own paging, and queueing from it.
+  // All personal, so none of it needs the DJ role.
+  if (customId === FAVOURITE_PLAY_ALL_ID) {
+    await queueFavourites(
+      interaction,
+      favouritesRepository.list(interaction.user.id, MAX_FAVOURITES),
+    );
+    return;
+  }
+  if (customId.startsWith(FAVOURITE_PAGE_PREFIX)) {
+    await showFavouritesPage(
+      interaction,
+      Number(customId.slice(FAVOURITE_PAGE_PREFIX.length)) || 0,
+    );
     return;
   }
   // Starring is personal and changes nothing for anyone else, so it needs no
@@ -399,6 +423,73 @@ async function replayStoredTrack(interaction: ButtonInteraction, historyId: numb
   await respond(interaction, {
     embeds: [successEmbed(`Queued **${truncate(entry.title, 80)}**.`)],
   });
+}
+
+/** Redraws the favourites card on another page. */
+async function showFavouritesPage(interaction: ButtonInteraction, page: number): Promise<void> {
+  const saved = favouritesRepository.list(interaction.user.id, MAX_FAVOURITES);
+  await interaction.update({
+    embeds: [favouritesEmbed(saved, page)],
+    components: favouritesControls(saved, page),
+  });
+}
+
+/**
+ * Queues starred tracks, whether that is all of them or the few that were
+ * picked. The presser has to be in a voice channel themselves, since the card
+ * is usually opened long after the bot has left.
+ */
+async function queueFavourites(
+  interaction: ButtonInteraction | StringSelectMenuInteraction,
+  entries: FavouriteTrack[],
+): Promise<void> {
+  if (!interaction.guild) return;
+
+  if (entries.length === 0) {
+    await interaction.reply({
+      embeds: [errorEmbed('Those tracks are no longer in your favourites.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const member = await resolveMember(interaction, interaction.guild);
+  const voiceChannelId =
+    member.voice.channelId ?? playerManager.get(interaction.guild.id)?.channelId;
+  if (!voiceChannelId) {
+    await interaction.reply({
+      embeds: [errorEmbed('Join a voice channel first.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const result = await enqueueKnownTracks({
+    guildId: interaction.guild.id,
+    tracks: entries.map((entry) => toTrack(entry, member.id, member.displayName)),
+    voiceChannelId,
+    textChannelId: interaction.channelId,
+  });
+
+  const first = entries[0];
+  await respond(interaction, {
+    embeds: [
+      result.added === 0
+        ? errorEmbed('The queue is full, so nothing could be added.')
+        : successEmbed(
+            result.added === 1 && first
+              ? `Queued **${truncate(first.title, 80)}**.`
+              : `Queued ${result.added} favourites.`,
+          ),
+    ],
+  });
+}
+
+/** Queues just the favourites ticked on the card, in the order they were ticked. */
+async function handleFavouritePick(interaction: StringSelectMenuInteraction): Promise<void> {
+  const ids = interaction.values.map(Number);
+  await queueFavourites(interaction, favouritesRepository.byIds(interaction.user.id, ids));
 }
 
 /** Stars or unstars the song a card is showing, for whoever pressed it. */

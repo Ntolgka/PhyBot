@@ -31,9 +31,12 @@ changing the bot's own name, avatar, banner, description and presence.
 - A Queue button opens the whole playlist, paged and numbered by position. Any
   of those numbers can be picked to play it straight away without losing the
   rest of the queue, and picking several plays them in the order you tick them
-- A Favourite button on every song card. Starred tracks belong to you rather
-  than to a server, so `/favorites` queues them wherever the bot is, and the
-  button on an older card stars that card's song
+- A Favourite button on every song card, including older ones, where it stars
+  that card's own song. Starred tracks belong to you rather than to a server,
+  so they follow you into any server the bot is in
+- `/favorites` opens your starred tracks: a numbered list with Play all, a
+  picker to queue only the ones you tick, and paging past 25. Only you can see
+  it, and picking several plays them in the order you ticked them
 - Synced lyrics: the dashboard follows the song line by line, and /lyrics shows
   the words around the point the track has reached
 - The voice channel status shows the track that is playing, with a music note
@@ -372,7 +375,7 @@ them inside Discord.
 | `/panel`                                                                                      | Post the live music panel with the queue and controls here |
 | `/source`                                                                                     | Show the link of the current track                         |
 | `/lyrics`                                                                                     | Show the words of the track that is playing                |
-| `/favorites`                                                                                  | Queue every track you have starred                         |
+| `/favorites`                                                                                  | Show your starred tracks, to play all or just some         |
 | `/loop <off\|track\|queue>`, `/autoplay`, `/volume`                                           | Playback modes                                             |
 | `/join`, `/leave`                                                                             | Move the bot in and out of voice                           |
 | `/event create\|list\|publish\|cancel`                                                        | Events with RSVP buttons                                   |

@@ -311,6 +311,29 @@ export const favouritesRepository = {
     );
   },
 
+  /**
+   * The chosen favourites, in the order they were picked rather than the order
+   * they are stored. Ids are filtered by owner, so one person's card cannot
+   * queue another's tracks.
+   */
+  byIds(userId: string, ids: number[]): FavouriteTrack[] {
+    const wanted = ids.filter((id) => Number.isInteger(id) && id > 0).slice(0, 200);
+    if (wanted.length === 0) return [];
+
+    const rows = queryAll<FavouriteRow>(
+      `SELECT id, title, author, url, source, duration, thumbnail
+       FROM track_favourites
+       WHERE user_id = ? AND id IN (${wanted.map(() => '?').join(',')})`,
+      userId,
+      ...wanted,
+    );
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return wanted
+      .map((id) => byId.get(id))
+      .filter((row): row is FavouriteRow => row !== undefined)
+      .map((row) => ({ ...row, thumbnail: row.thumbnail || null }));
+  },
+
   list(userId: string, limit = 100): FavouriteTrack[] {
     return queryAll<FavouriteRow>(
       `SELECT id, title, author, url, source, duration, thumbnail
