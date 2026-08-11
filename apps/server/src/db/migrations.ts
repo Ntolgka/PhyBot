@@ -260,4 +260,27 @@ export const migrations: Migration[] = [
       ALTER TABLE play_history ADD COLUMN thumbnail TEXT NOT NULL DEFAULT '';
     `,
   },
+  {
+    version: 10,
+    name: 'per person favourite tracks',
+    sql: `
+      CREATE TABLE IF NOT EXISTS track_favourites (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    TEXT    NOT NULL,
+        guild_id   TEXT    NOT NULL,
+        title      TEXT    NOT NULL,
+        author     TEXT    NOT NULL DEFAULT '',
+        url        TEXT    NOT NULL,
+        source     TEXT    NOT NULL,
+        duration   INTEGER NOT NULL DEFAULT 0,
+        thumbnail  TEXT    NOT NULL DEFAULT '',
+        added_at   INTEGER NOT NULL,
+        -- Favourites belong to the person, so the same song saved in two
+        -- servers is one entry rather than two.
+        UNIQUE (user_id, url)
+      );
+      CREATE INDEX IF NOT EXISTS idx_favourites_user
+        ON track_favourites (user_id, added_at DESC);
+    `,
+  },
 ];

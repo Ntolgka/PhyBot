@@ -130,6 +130,37 @@ export async function play(params: PlayParams): Promise<PlayResult> {
   };
 }
 
+/**
+ * Queues tracks that are already known, without resolving anything.
+ *
+ * Favourites are stored with everything the queue needs, so putting a saved
+ * list back is one join and one enqueue. Sending them through `play()` would
+ * re-resolve every entry - a yt-dlp process each - to arrive at the same place.
+ * The stream is resolved when a track actually starts, as it always is.
+ */
+export async function enqueueKnownTracks(params: {
+  guildId: string;
+  tracks: Track[];
+  voiceChannelId?: string | undefined;
+  textChannelId?: string | undefined;
+}): Promise<{ added: number; rejected: number; startedNow: boolean }> {
+  const guild = getGuild(params.guildId);
+  const targetChannelId = params.voiceChannelId ?? playerManager.get(params.guildId)?.channelId;
+  if (!targetChannelId) {
+    throw new AppError(
+      'no_voice_channel',
+      'Join a voice channel first, or pick one to play in',
+      400,
+    );
+  }
+
+  const voiceChannel = resolveVoiceChannel(guild, targetChannelId);
+  const player = await playerManager.join(guild, voiceChannel, params.textChannelId ?? null);
+  const wasIdle = player.queue.current === null;
+  const result = await player.enqueue(params.tracks);
+  return { ...result, startedNow: wasIdle };
+}
+
 /** Ensures the bot is connected without queueing anything. */
 export async function join(
   guildId: string,

@@ -9,6 +9,7 @@ import {
   QUEUE_PAGE_SIZE,
   REPLAY_ONE_PREFIX,
   REPLAY_LIST_PREFIX,
+  FAVOURITE_PREFIX,
 } from './embeds.js';
 
 const track: Track = {
@@ -251,8 +252,32 @@ describe('replayControls', () => {
     expect((list?.custom_id ?? '').length).toBeLessThanOrEqual(100);
   });
 
-  it('is the only control left on a finished card', () => {
-    expect(replayControls({ historyId: 1 })).toHaveLength(1);
-    expect(replayControls({ historyId: 1 })[0]?.toJSON().components).toHaveLength(1);
+  it('leaves a finished card one row: replay it, or star it', () => {
+    const rows = replayControls({ historyId: 1 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.toJSON().components.map((c) => c.custom_id)).toEqual([
+      `${REPLAY_ONE_PREFIX}1`,
+      `${FAVOURITE_PREFIX}1`,
+    ]);
+  });
+});
+
+describe('the favourite button', () => {
+  function ids(rows: ReturnType<typeof musicControls>): string[] {
+    return rows.flatMap((row) => row.toJSON().components.map((c) => c.custom_id ?? ''));
+  }
+
+  it('is bound to the song the card is showing', () => {
+    const rows = musicControls(snapshot({ status: 'playing', current: track }), { historyId: 7 });
+    expect(ids(rows)).toContain(`${FAVOURITE_PREFIX}7`);
+  });
+
+  it('stays on a finished card, so an old song can still be starred', () => {
+    expect(ids(replayControls({ historyId: 7 }))).toContain(`${FAVOURITE_PREFIX}7`);
+  });
+
+  it('is left off when the card does not know which play it is showing', () => {
+    const rows = musicControls(snapshot({ status: 'playing', current: track }));
+    expect(ids(rows).some((id) => id.startsWith(FAVOURITE_PREFIX))).toBe(false);
   });
 });

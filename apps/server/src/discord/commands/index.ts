@@ -7,6 +7,7 @@ import { queueCommands } from './queue.js';
 import { imagineCommands } from './imagine.js';
 import { lyricsCommands } from './lyrics.js';
 import { soundboardCommands } from './soundboard.js';
+import { favouritesCommands } from './favourites.js';
 import { turksigaraCommands } from './turksigara.js';
 import { utilityCommands } from './utility.js';
 import type { BotCommand } from './types.js';
@@ -52,6 +53,7 @@ export const commandRegistry = new CommandRegistry([
   ...communityCommands,
   ...configCommands,
   ...assistantCommands,
+  ...favouritesCommands,
   ...turksigaraCommands,
   ...utilityCommands,
 ]);

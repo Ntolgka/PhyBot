@@ -9,7 +9,11 @@ import {
 import { SEEK_STEP_SECONDS, truncate, type LoopMode, type PlayerSnapshot } from '@phybot/shared';
 import { AppError, toErrorMessage } from '../core/errors.js';
 import { createLogger } from '../core/logger.js';
-import { collectionsRepository, historyRepository } from '../db/repositories/misc.js';
+import {
+  collectionsRepository,
+  favouritesRepository,
+  historyRepository,
+} from '../db/repositories/misc.js';
 import { settingsRepository } from '../db/repositories/settings.js';
 import { handleEventInteraction, handleRolePanelInteraction } from '../features/index.js';
 import { playerManager } from '../music/manager.js';
@@ -34,6 +38,7 @@ import {
   QUEUE_PICK_ID,
   REPLAY_ONE_PREFIX,
   REPLAY_LIST_PREFIX,
+  FAVOURITE_PREFIX,
 } from './embeds.js';
 import { isPanelMessage } from './panel.js';
 import { findCustomCommand, renderCustomCommand } from './customCommands.js';
@@ -164,6 +169,12 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   // play rather than replaying whatever is current.
   if (customId.startsWith(REPLAY_ONE_PREFIX)) {
     await replayStoredTrack(interaction, Number(customId.slice(REPLAY_ONE_PREFIX.length)));
+    return;
+  }
+  // Starring is personal and changes nothing for anyone else, so it needs no
+  // player and no DJ role.
+  if (customId.startsWith(FAVOURITE_PREFIX)) {
+    await toggleFavourite(interaction, Number(customId.slice(FAVOURITE_PREFIX.length)));
     return;
   }
   // The card a finished playlist left behind queues the playlist again, not the
@@ -387,6 +398,35 @@ async function replayStoredTrack(interaction: ButtonInteraction, historyId: numb
   });
   await respond(interaction, {
     embeds: [successEmbed(`Queued **${truncate(entry.title, 80)}**.`)],
+  });
+}
+
+/** Stars or unstars the song a card is showing, for whoever pressed it. */
+async function toggleFavourite(interaction: ButtonInteraction, historyId: number): Promise<void> {
+  if (!interaction.guild) return;
+
+  const entry = Number.isInteger(historyId) ? historyRepository.byId(historyId) : null;
+  if (!entry || entry.guildId !== interaction.guild.id) {
+    await interaction.reply({
+      embeds: [errorEmbed('That track is no longer available.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // The stored play already carries everything a favourite needs, including the
+  // real source - which a Track's narrower union would have forced a guess at.
+  const added = favouritesRepository.toggle(interaction.user.id, interaction.guild.id, entry);
+
+  await interaction.reply({
+    embeds: [
+      successEmbed(
+        added
+          ? `Starred **${truncate(entry.title, 80)}**. Queue them all with \`/favorites\`.`
+          : `Removed **${truncate(entry.title, 80)}** from your favourites.`,
+      ),
+    ],
+    flags: MessageFlags.Ephemeral,
   });
 }
 

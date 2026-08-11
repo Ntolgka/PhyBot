@@ -237,3 +237,86 @@ export const collectionsRepository = {
       : null;
   },
 };
+
+export interface FavouriteTrack {
+  id: number;
+  title: string;
+  author: string;
+  url: string;
+  source: string;
+  duration: number;
+  thumbnail: string | null;
+}
+
+interface FavouriteRow {
+  id: number;
+  title: string;
+  author: string;
+  url: string;
+  source: string;
+  duration: number;
+  thumbnail: string;
+}
+
+/** What starring a track needs to know, which a stored play already carries. */
+export interface FavouriteInput {
+  title: string;
+  author: string;
+  url: string;
+  /** Free text, kept as stored so the original source is not lost. */
+  source: string;
+  duration: number;
+  thumbnail: string | null;
+}
+
+/**
+ * Tracks someone starred from a song card. Keyed by the person rather than the
+ * server, so a favourite saved in one server is there in every other.
+ */
+export const favouritesRepository = {
+  /** Adds or removes, and reports whether the track is a favourite afterwards. */
+  toggle(userId: string, guildId: string, track: FavouriteInput): boolean {
+    const existing = queryOne<{ id: number }>(
+      'SELECT id FROM track_favourites WHERE user_id = ? AND url = ?',
+      userId,
+      track.url,
+    );
+    if (existing) {
+      execute('DELETE FROM track_favourites WHERE id = ?', existing.id);
+      return false;
+    }
+    execute(
+      `INSERT INTO track_favourites (user_id, guild_id, title, author, url, source, duration, thumbnail, added_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      userId,
+      guildId,
+      track.title,
+      track.author,
+      track.url,
+      track.source,
+      Math.round(track.duration),
+      track.thumbnail ?? '',
+      Date.now(),
+    );
+    return true;
+  },
+
+  has(userId: string, url: string): boolean {
+    return Boolean(
+      queryOne<{ id: number }>(
+        'SELECT id FROM track_favourites WHERE user_id = ? AND url = ?',
+        userId,
+        url,
+      ),
+    );
+  },
+
+  list(userId: string, limit = 100): FavouriteTrack[] {
+    return queryAll<FavouriteRow>(
+      `SELECT id, title, author, url, source, duration, thumbnail
+       FROM track_favourites WHERE user_id = ? ORDER BY added_at DESC LIMIT ?`,
+      userId,
+      Math.min(Math.max(limit, 1), 200),
+    ).map((row) => ({ ...row, thumbnail: row.thumbnail || null }));
+  },
+};

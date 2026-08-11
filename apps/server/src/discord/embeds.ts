@@ -282,6 +282,7 @@ export const MUSIC_BUTTONS = {
 
 export const REPLAY_ONE_PREFIX = 'music:replayone:';
 export const REPLAY_LIST_PREFIX = 'music:replaylist:';
+export const FAVOURITE_PREFIX = 'music:favourite:';
 
 /**
  * What a card's Play again should queue. A playlist keeps one card for the
@@ -313,7 +314,23 @@ function replayButton(target: CardTarget): ButtonBuilder {
  * rather than whatever happens to be current.
  */
 export function replayControls(target: CardTarget): ActionRowBuilder<ButtonBuilder>[] {
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(replayButton(target))];
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(replayButton(target));
+  const star = favouriteButton(target);
+  if (star) row.addComponents(star);
+  return [row];
+}
+
+/**
+ * Stars the song a card is showing, for whoever presses it. Bound to the stored
+ * play rather than to what is current, so an older card saves its own song.
+ */
+function favouriteButton(target: CardTarget): ButtonBuilder | null {
+  if (target.historyId === undefined) return null;
+  return new ButtonBuilder()
+    .setCustomId(`${FAVOURITE_PREFIX}${target.historyId}`)
+    .setEmoji('⭐')
+    .setLabel('Favourite')
+    .setStyle(ButtonStyle.Secondary);
 }
 
 /** Tracks per page in the queue browser; also Discord's select menu maximum. */
@@ -478,6 +495,9 @@ export function musicControls(
       .setLabel('Lyrics')
       .setStyle(ButtonStyle.Secondary),
   );
+
+  const star = favouriteButton(target);
+  if (star) browse.addComponents(star);
 
   return [primary, secondary, browse];
 }
