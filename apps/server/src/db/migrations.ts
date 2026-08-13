@@ -283,4 +283,19 @@ export const migrations: Migration[] = [
         ON track_favourites (user_id, added_at DESC);
     `,
   },
+  {
+    version: 11,
+    name: 'channel for the daily turksigara post',
+    sql: `
+      ALTER TABLE guild_settings ADD COLUMN turksigara_channel_id TEXT;
+    `,
+  },
+  {
+    version: 12,
+    name: 'when the daily turksigara post goes out',
+    sql: `
+      ALTER TABLE guild_settings ADD COLUMN turksigara_time TEXT NOT NULL DEFAULT '22:00';
+      ALTER TABLE guild_settings ADD COLUMN turksigara_timezone TEXT NOT NULL DEFAULT 'Europe/Athens';
+    `,
+  },
 ];

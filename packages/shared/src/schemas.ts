@@ -8,6 +8,25 @@ import { FLUX_BACKENDS, FLUX_STYLES, MAX_FLUX_BATCH, MIN_FLUX_BATCH } from './ty
 import { LOOP_MODES } from './types/music.js';
 import { TTS_PROVIDERS } from './types/tts.js';
 
+/** A time of day as 24 hour HH:MM, which is what a daily schedule needs. */
+export const dailyTime = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24 hour time such as 22:00');
+
+/**
+ * An IANA zone name, checked by asking the platform rather than against a list
+ * that would go stale. A zone the runtime cannot read would leave the schedule
+ * silently never firing, so it is rejected at the edge.
+ */
+export const ianaTimezone = z.string().refine((value) => {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}, 'Unknown time zone');
+
 /** Discord snowflakes are 17-20 digit numeric strings. */
 export const snowflake = z.string().regex(/^\d{17,20}$/, 'Invalid Discord id');
 const nullableSnowflake = snowflake.nullable();
@@ -34,6 +53,9 @@ export const guildSettingsUpdateSchema = z
     goodbyeChannelId: nullableSnowflake,
     goodbyeMessage: z.string().max(1500),
     musicTextChannelId: nullableSnowflake,
+    turksigaraChannelId: nullableSnowflake,
+    turksigaraTime: dailyTime,
+    turksigaraTimezone: ianaTimezone,
     announceNowPlaying: z.boolean(),
     defaultVolume: z.number().int().min(MIN_VOLUME).max(MAX_VOLUME),
     idleTimeoutSeconds: z.number().int().min(0).max(3600),

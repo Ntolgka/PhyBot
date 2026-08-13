@@ -92,6 +92,10 @@ changing the bot's own name, avatar, banner, description and presence.
 - `/turksigara` posts a random picture from turksigara.net, the way the site's
   own "rastgele" button works. Give it a number to post that exact one:
   `/turksigara 142` is the picture at turksigara.net/142
+- A daily picture, posted automatically. Set the channel, the time of day and
+  the time zone per server, in the dashboard or with `/config turksigara-channel`;
+  leave the channel empty to turn it off. Defaults to 22:00 Europe/Athens, and
+  the hour holds across daylight saving
 
 ### Community
 

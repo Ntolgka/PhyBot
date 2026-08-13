@@ -57,6 +57,12 @@ export interface GuildSettings {
   goodbyeChannelId: string | null;
   goodbyeMessage: string;
   musicTextChannelId: string | null;
+  /** Where the daily turksigara picture is posted, or null to not post one. */
+  turksigaraChannelId: string | null;
+  /** Time of day for that post, as 24 hour HH:MM. */
+  turksigaraTime: string;
+  /** IANA zone the time is read in, so the hour holds across daylight saving. */
+  turksigaraTimezone: string;
   /**
    * Keep a live panel in the music text channel showing the current track,
    * the queue and the playback buttons.

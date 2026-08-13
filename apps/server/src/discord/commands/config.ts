@@ -1,8 +1,8 @@
 import { ChannelType, SlashCommandBuilder } from 'discord.js';
-import type { GuildSettingsUpdate } from '@phybot/shared';
+import { guildSettingsUpdateSchema, type GuildSettingsUpdate } from '@phybot/shared';
 import { bus } from '../../core/bus.js';
 import { settingsRepository } from '../../db/repositories/settings.js';
-import { baseEmbed, successEmbed } from '../embeds.js';
+import { baseEmbed, errorEmbed, successEmbed } from '../embeds.js';
 import { embedReply } from '../reply.js';
 import type { BotCommand } from './types.js';
 
@@ -85,6 +85,26 @@ const configCommand: BotCommand = {
     )
     .addSubcommand((sub) =>
       sub
+        .setName('turksigara-channel')
+        .setDescription('Daily türksigara picture: where it is posted, and when')
+        .addChannelOption((option) =>
+          option
+            .setName('channel')
+            .setDescription('Leave empty to stop the daily post')
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
+        )
+        .addStringOption((option) =>
+          option.setName('time').setDescription('24 hour time, such as 22:00').setMaxLength(5),
+        )
+        .addStringOption((option) =>
+          option
+            .setName('timezone')
+            .setDescription('IANA zone the time is read in, such as Europe/Athens')
+            .setMaxLength(64),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName('dj-role')
         .setDescription('Role required to control playback')
         .addRoleOption((option) =>
@@ -155,6 +175,47 @@ const configCommand: BotCommand = {
         );
         return;
       }
+      case 'turksigara-channel': {
+        const channel = interaction.options.getChannel('channel');
+        const time = interaction.options.getString('time');
+        const timezone = interaction.options.getString('timezone');
+
+        // Validated with the same schema the dashboard uses, so a bad value is
+        // refused the same way in both places rather than saved and silently
+        // never firing.
+        const parsed = guildSettingsUpdateSchema.safeParse({
+          ...(time === null ? {} : { turksigaraTime: time }),
+          ...(timezone === null ? {} : { turksigaraTimezone: timezone }),
+        });
+        if (!parsed.success) {
+          await embedReply(
+            interaction,
+            errorEmbed(
+              parsed.error.issues.map((issue: { message: string }) => issue.message).join('\n'),
+              'That did not look right',
+            ),
+            true,
+          );
+          return;
+        }
+
+        const updated = settingsRepository.update(guild.id, {
+          ...parsed.data,
+          turksigaraChannelId: channel?.id ?? null,
+        });
+        bus.emit('settings:update', updated);
+
+        await embedReply(
+          interaction,
+          successEmbed(
+            updated.turksigaraChannelId
+              ? `A random türksigara picture will be posted in <#${updated.turksigaraChannelId}> every day at ${updated.turksigaraTime} (${updated.turksigaraTimezone}).`
+              : 'The daily türksigara post is off.',
+          ),
+          true,
+        );
+        return;
+      }
       case 'music-channel': {
         const channel = interaction.options.getChannel('channel');
         save(guild.id, { musicTextChannelId: channel?.id ?? null });
@@ -216,6 +277,11 @@ const configCommand: BotCommand = {
               value: [
                 `DJ role: ${roleMention(settings.djRoleId)}`,
                 `Now playing channel: ${channelMention(settings.musicTextChannelId)}`,
+                `Daily türksigara: ${channelMention(settings.turksigaraChannelId)}${
+                  settings.turksigaraChannelId
+                    ? ` at ${settings.turksigaraTime} (${settings.turksigaraTimezone})`
+                    : ''
+                }`,
                 `Default volume: ${settings.defaultVolume}%`,
                 `Idle timeout: ${settings.idleTimeoutSeconds}s`,
               ].join('\n'),

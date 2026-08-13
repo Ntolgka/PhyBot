@@ -18,6 +18,9 @@ interface SettingsRow {
   goodbye_channel_id: string | null;
   goodbye_message: string;
   music_text_channel_id: string | null;
+  turksigara_channel_id: string | null;
+  turksigara_time: string;
+  turksigara_timezone: string;
   announce_now_playing: number;
   default_volume: number;
   idle_timeout_seconds: number;
@@ -49,6 +52,9 @@ const COLUMNS: Record<keyof GuildSettingsUpdate, keyof SettingsRow> = {
   goodbyeChannelId: 'goodbye_channel_id',
   goodbyeMessage: 'goodbye_message',
   musicTextChannelId: 'music_text_channel_id',
+  turksigaraChannelId: 'turksigara_channel_id',
+  turksigaraTime: 'turksigara_time',
+  turksigaraTimezone: 'turksigara_timezone',
   announceNowPlaying: 'announce_now_playing',
   defaultVolume: 'default_volume',
   idleTimeoutSeconds: 'idle_timeout_seconds',
@@ -90,6 +96,9 @@ function toSettings(row: SettingsRow): GuildSettings {
     goodbyeChannelId: row.goodbye_channel_id,
     goodbyeMessage: row.goodbye_message,
     musicTextChannelId: row.music_text_channel_id,
+    turksigaraChannelId: row.turksigara_channel_id,
+    turksigaraTime: row.turksigara_time,
+    turksigaraTimezone: row.turksigara_timezone,
     announceNowPlaying: row.announce_now_playing === 1,
     defaultVolume: row.default_volume,
     idleTimeoutSeconds: row.idle_timeout_seconds,

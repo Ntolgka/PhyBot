@@ -28,6 +28,7 @@ import {
   startFreeGamesScheduler,
   stopFreeGamesScheduler,
 } from './freeGames/service.js';
+import { startTurksigaraScheduler, stopTurksigaraScheduler } from './turksigara/service.js';
 
 export {
   handleMemberJoin,
@@ -58,9 +59,11 @@ export {
 export function startFeatureSchedulers(): void {
   startEventScheduler();
   startFreeGamesScheduler();
+  startTurksigaraScheduler();
 }
 
 export function stopFeatureSchedulers(): void {
   stopEventScheduler();
   stopFreeGamesScheduler();
+  stopTurksigaraScheduler();
 }

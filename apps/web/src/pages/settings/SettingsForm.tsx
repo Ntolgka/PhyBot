@@ -37,6 +37,18 @@ const GAME_STORE_LABEL: Record<GameStore, string> = {
 
 const TEXT_CHANNEL_TYPES: ChannelSummary['type'][] = ['text', 'announcement'];
 
+/**
+ * Zones the browser knows about, so the list cannot go stale. The fallback
+ * covers the handful of runtimes without supportedValuesOf.
+ */
+const TIMEZONES: string[] = (() => {
+  try {
+    return Intl.supportedValuesOf('timeZone');
+  } catch {
+    return ['Europe/Athens', 'Europe/Istanbul', 'Europe/London', 'UTC'];
+  }
+})();
+
 export function SettingsForm({
   guildId,
   initial,
@@ -238,6 +250,38 @@ export function SettingsForm({
             value={form.idleTimeoutSeconds}
             onChange={(event) => set('idleTimeoutSeconds', Number(event.target.value))}
             hint="Leaves voice after this many seconds alone. 0 disables it."
+          />
+        </div>
+      </Card>
+
+      <Card title="Fun" description="A random türksigara.net picture, once a day.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ChannelSelect
+            label="Daily türksigara channel"
+            hint="Leave empty to turn the daily post off."
+            channels={channels}
+            types={TEXT_CHANNEL_TYPES}
+            value={form.turksigaraChannelId}
+            onChange={(value) => set('turksigaraChannelId', value)}
+          />
+          <Input
+            type="time"
+            label="Time of day"
+            value={form.turksigaraTime}
+            onChange={(event) => set('turksigaraTime', event.target.value)}
+            hint="24 hour clock, in the time zone below."
+          />
+          <Select
+            label="Time zone"
+            value={form.turksigaraTimezone}
+            onChange={(event) => set('turksigaraTimezone', event.target.value)}
+            options={[
+              // A saved zone this browser does not list would otherwise
+              // disappear from the picker and be overwritten on the next save.
+              ...(TIMEZONES.includes(form.turksigaraTimezone) ? [] : [form.turksigaraTimezone]),
+              ...TIMEZONES,
+            ].map((zone) => ({ value: zone, label: zone }))}
+            hint="The hour holds across daylight saving in this zone."
           />
         </div>
       </Card>
