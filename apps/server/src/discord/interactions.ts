@@ -47,6 +47,7 @@ import {
   favouritesControls,
   favouritesEmbed,
 } from './embeds.js';
+import { KARAOKE_STOP_ID, stopKaraoke } from './karaoke.js';
 import { isPanelMessage } from './panel.js';
 import { findCustomCommand, renderCustomCommand } from './customCommands.js';
 import { respond } from './reply.js';
@@ -193,6 +194,11 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
       interaction,
       Number(customId.slice(FAVOURITE_PAGE_PREFIX.length)) || 0,
     );
+    return;
+  }
+  if (customId === KARAOKE_STOP_ID) {
+    await stopKaraoke(interaction.guild.id);
+    await interaction.deferUpdate();
     return;
   }
   // Starring is personal and changes nothing for anyone else, so it needs no

@@ -6,6 +6,7 @@ import { settingsRepository } from '../db/repositories/settings.js';
 import { playerManager } from '../music/manager.js';
 import { errorEmbed } from './embeds.js';
 import { tryGetClient } from './client.js';
+import { registerKaraoke } from './karaoke.js';
 import { registerMusicPanel } from './panel.js';
 import { registerVoiceStatus } from './voiceStatus.js';
 
@@ -38,6 +39,7 @@ async function resolveChannel(guildId: string): Promise<SendableChannels | null>
 export function registerMusicAnnouncements(): void {
   registerMusicPanel();
   registerVoiceStatus();
+  registerKaraoke();
 
   playerManager.on('playbackError', async ({ guildId, message }) => {
     const channel = await resolveChannel(guildId);

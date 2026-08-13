@@ -42,6 +42,8 @@ changing the bot's own name, avatar, banner, description and presence.
   it, and picking several plays them in the order you ticked them
 - Synced lyrics: the dashboard follows the song line by line, and /lyrics shows
   the words around the point the track has reached
+- `/karaoke` posts a message that follows the words as they are sung, one line
+  highlighted at a time, and stops itself when the track ends
 - The voice channel status shows the track that is playing, with a music note
 - Autoplay keeps similar music going when the queue runs out, seeded from the
   track that just finished
@@ -382,6 +384,7 @@ them inside Discord.
 | `/panel`                                                                                      | Post the live music panel with the queue and controls here |
 | `/source`                                                                                     | Show the link of the current track                         |
 | `/lyrics`                                                                                     | Show the words of the track that is playing                |
+| `/karaoke`                                                                                    | Follow the words line by line while the track plays        |
 | `/favorites`                                                                                  | Show your starred tracks, to play all or just some         |
 | `/loop <off\|track\|queue>`, `/autoplay`, `/volume`                                           | Playback modes                                             |
 | `/join`, `/leave`                                                                             | Move the bot in and out of voice                           |

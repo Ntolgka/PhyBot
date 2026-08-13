@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, type EmbedBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder, type EmbedBuilder } from 'discord.js';
 import { truncate, type PlayerSnapshot } from '@phybot/shared';
 import { AppError } from '../../core/errors.js';
 import { findLyrics, lineAt, type LyricLine } from '../../music/lyrics.js';
-import { baseEmbed } from '../embeds.js';
+import { baseEmbed, errorEmbed, successEmbed } from '../embeds.js';
+import { startKaraoke } from '../karaoke.js';
 import { respond } from '../reply.js';
 import { requirePlayer } from './helpers.js';
 import type { BotCommand } from './types.js';
@@ -77,7 +78,28 @@ const lyricsCommand: BotCommand = {
   },
 };
 
-export const lyricsCommands: BotCommand[] = [lyricsCommand];
+const karaokeCommand: BotCommand = {
+  category: 'Music',
+  usage: '/karaoke',
+  data: new SlashCommandBuilder()
+    .setName('karaoke')
+    .setDescription('Follow the words line by line while the track plays'),
+  async execute({ interaction, guild }) {
+    const player = requirePlayer(guild.id);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const problem = await startKaraoke(guild.id, interaction.channelId, player.snapshot());
+    await respond(interaction, {
+      embeds: [
+        problem
+          ? errorEmbed(problem)
+          : successEmbed('Following along. Press Stop karaoke when you have had enough.'),
+      ],
+    });
+  },
+};
+
+export const lyricsCommands: BotCommand[] = [lyricsCommand, karaokeCommand];
 
 /** Builds the same lyrics card the command produces, for the panel button. */
 export async function buildLyricsEmbed(snapshot: PlayerSnapshot): Promise<EmbedBuilder | null> {
