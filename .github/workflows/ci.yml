@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Two jobs run in parallel: one decides whether the change is sound, the other
+# reports on dependencies. A dependency advisory with no upstream fix must not
+# be able to block a correct change, so they are kept apart.
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # The bot downloads ffmpeg and yt-dlp in a postinstall step. CI only
+      # needs to type check, test and build, so that download is skipped to
+      # keep the run fast and independent of those services being up.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Reported rather than enforced. The known advisories come from node-tar
+      # by way of @discordjs/node-pre-gyp, which has no fixed version, so
+      # failing on them would leave the branch permanently red without telling
+      # anyone anything new. Read the output when this job is orange.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+        continue-on-error: true
